@@ -1,0 +1,18 @@
+{
+  "name": "raphtalia-md",
+  "version": "1.0.0",
+  "description": "Raphtalia-MD, bot de WhatsApp para PC",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "baileys": "npm:@neykoor/baileys@8.0.3-rc18",
+    "pino": "^9.6.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
