@@ -40,7 +40,15 @@ export const serialize = async (sock, raw) => {
 
   const senderRaw = fromMe ? botJid : normalizeJid(isGroup ? key.participant : key.remoteJid)
   const senderAlt = fromMe ? botJid : normalizeJid(isGroup ? key.participantAlt : key.remoteJidAlt)
-  const sender = senderAlt || (await resolvePn(sock, senderRaw))
+  const resolved = new Map()
+  const resolve = jid => {
+    const normalized = normalizeJid(jid)
+    if (!normalized) return Promise.resolve('')
+    if (!resolved.has(normalized)) resolved.set(normalized, resolvePn(sock, normalized))
+    return resolved.get(normalized)
+  }
+
+  const sender = senderAlt || (await resolve(senderRaw))
   const botLid = fromMe ? normalizeJid(sock.user?.lid) : ''
   const senderIds = [...new Set([senderRaw, senderAlt, sender, botLid].filter(Boolean))]
 
@@ -98,6 +106,7 @@ export const serialize = async (sock, raw) => {
     send,
     reply,
     react,
-    getGroup
+    getGroup,
+    resolve
   }
 }
