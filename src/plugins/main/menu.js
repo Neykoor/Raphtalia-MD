@@ -1,6 +1,25 @@
+import { readdir, readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import config from '../../../config.js'
 import { registry } from '../../core/loader.js'
 import { formatUptime } from '../../utils/time.js'
+
+const mediaDir = fileURLToPath(new URL('../../../media/', import.meta.url))
+const imageExtensions = ['jpg', 'jpeg', 'png', 'webp']
+
+const findMenuImage = async () => {
+  try {
+    const files = await readdir(mediaDir)
+    const found = files.find(file => {
+      const [name, extension] = file.toLowerCase().split(/\.(?=[^.]+$)/)
+      return name === 'menu' && imageExtensions.includes(extension)
+    })
+    return found ? join(mediaDir, found) : null
+  } catch {
+    return null
+  }
+}
 
 export default {
   name: 'menu',
@@ -31,6 +50,11 @@ export default {
       `Comandos: ${registry.list.length}`
     ].join('\n')
 
-    await ctx.reply([header, ...sections].join('\n\n'))
+    const text = [header, ...sections].join('\n\n')
+    const imagePath = await findMenuImage()
+
+    if (!imagePath) return ctx.reply(text)
+
+    await ctx.reply({ image: await readFile(imagePath), caption: text })
   }
 }
