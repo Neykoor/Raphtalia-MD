@@ -41,7 +41,8 @@ export const serialize = async (sock, raw) => {
   const senderRaw = fromMe ? botJid : normalizeJid(isGroup ? key.participant : key.remoteJid)
   const senderAlt = fromMe ? botJid : normalizeJid(isGroup ? key.participantAlt : key.remoteJidAlt)
   const sender = senderAlt || (await resolvePn(sock, senderRaw))
-  const senderIds = [...new Set([senderRaw, senderAlt, sender].filter(Boolean))]
+  const botLid = fromMe ? normalizeJid(sock.user?.lid) : ''
+  const senderIds = [...new Set([senderRaw, senderAlt, sender, botLid].filter(Boolean))]
 
   const content = normalizeMessageContent(raw.message) || {}
   const info = contextOf(content)
