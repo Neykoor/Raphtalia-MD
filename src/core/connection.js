@@ -19,6 +19,16 @@ const messageCache = makeCache(config.messageCacheSize, config.messageCacheTtlMs
 let loginChoice = null
 let pluginsReady = false
 let badSessions = 0
+let reconnects = 0
+
+const maxReconnectDelayMs = 30000
+const stableAfterMs = 60000
+
+const nextDelay = () => {
+  const delay = Math.min(config.reconnectDelayMs * 2 ** reconnects, maxReconnectDelayMs)
+  reconnects += 1
+  return delay
+}
 
 const resolveLogin = async registered => {
   if (registered) return null
@@ -51,7 +61,7 @@ const restart = delay => {
   setTimeout(() => {
     start().catch(error => {
       log.error('Error al reconectar:', error?.message ?? error)
-      restart(config.reconnectDelayMs)
+      restart(nextDelay())
     })
   }, delay)
 }
@@ -74,6 +84,8 @@ export const start = async () => {
     logger: silent,
     browser: Browsers.windows('Chrome'),
     markOnlineOnConnect: false,
+    keepAliveIntervalMs: 20000,
+    retryRequestDelayMs: 5000,
     syncFullHistory: false,
     mediaCache,
     shouldIgnoreJid: jid => jid === 'status@broadcast' || jid?.endsWith('@newsletter'),
@@ -82,6 +94,7 @@ export const start = async () => {
   })
 
   let closed = false
+  let openedAt = 0
 
   sock.ev.on('creds.update', saveCreds)
 
@@ -111,6 +124,7 @@ export const start = async () => {
 
     if (connection === 'open') {
       badSessions = 0
+      openedAt = Date.now()
       log.success(`${config.botName} conectado como ${sock.user?.name || sock.user?.id}`)
     }
 
@@ -118,6 +132,8 @@ export const start = async () => {
     closed = true
 
     const status = lastDisconnect?.error?.output?.statusCode
+    const uptimeMs = openedAt ? Date.now() - openedAt : 0
+    if (uptimeMs >= stableAfterMs) reconnects = 0
 
     if (status === DisconnectReason.badSession) {
       badSessions += 1
@@ -143,8 +159,11 @@ export const start = async () => {
       process.exit(1)
     }
 
-    log.warn(`Conexión cerrada (${status ?? 'desconocido'}): ${lastDisconnect?.error?.message ?? 'sin detalle'}. Reconectando...`)
-    restart(status === DisconnectReason.restartRequired ? 0 : config.reconnectDelayMs)
+    const delay = status === DisconnectReason.restartRequired ? 0 : nextDelay()
+    const detail = lastDisconnect?.error?.message ?? 'sin detalle'
+    const alive = openedAt ? ` tras ${Math.round(uptimeMs / 1000)}s conectado` : ' sin llegar a conectar'
+    log.warn(`Conexión cerrada (${status ?? 'desconocido'})${alive}: ${detail}. Reconectando en ${delay / 1000}s...`)
+    restart(delay)
   })
 
   if (login?.method === 'code') {
