@@ -75,8 +75,8 @@ export const setAdmin = async (ctx, action) => {
 
   await reply(
     action === 'promote'
-      ? `₊˚✧ Listo ♡ ${tag} ahora es administrador ✧˚₊`
-      : `₊˚✧ Hecho ♡ ${tag} ya no es administrador ✧˚₊`
+      ? `₊˚✧ Listo  ${tag} ahora es administrador ✧˚₊`
+      : `₊˚✧ Hecho  ${tag} ya no es administrador ✧˚₊`
   )
 }
 
