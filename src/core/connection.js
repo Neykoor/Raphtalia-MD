@@ -7,13 +7,14 @@ import makeWASocket, {
   useMultiFileAuthState
 } from 'baileys'
 import config from '../../config.js'
-import { makeCache } from '../utils/cache.js'
+import { makeCache, mediaCache } from '../utils/cache.js'
+import { bindGroupCache, getGroupMetadata } from '../utils/groups.js'
 import log, { silent } from '../utils/logger.js'
 import { ask } from '../utils/prompt.js'
 import { handleMessage } from './handler.js'
 import { loadPlugins } from './loader.js'
 
-const messageCache = makeCache(config.messageCacheSize)
+const messageCache = makeCache(config.messageCacheSize, config.messageCacheTtlMs)
 
 let loginChoice = null
 let pluginsReady = false
@@ -73,7 +74,9 @@ export const start = async () => {
     browser: Browsers.windows('Chrome'),
     markOnlineOnConnect: false,
     syncFullHistory: false,
-    generateHighQualityLinkPreview: true,
+    mediaCache,
+    shouldIgnoreJid: jid => jid === 'status@broadcast' || jid?.endsWith('@newsletter'),
+    cachedGroupMetadata: jid => getGroupMetadata(sock, jid),
     getMessage: async key => messageCache.get(key.id)
   })
 
@@ -81,9 +84,11 @@ export const start = async () => {
 
   sock.ev.on('creds.update', saveCreds)
 
+  bindGroupCache(sock)
+
   sock.ev.on('messages.upsert', ({ messages, type }) => {
     for (const message of messages) {
-      if (message.key?.id && message.message) messageCache.set(message.key.id, message.message)
+      if (message.key?.fromMe && message.key.id && message.message) messageCache.set(message.key.id, message.message)
     }
 
     if (type !== 'notify') return
