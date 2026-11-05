@@ -13,7 +13,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "baileys": "npm:@neykoor/baileys@8.0.4-rc18",
+    "baileys": "npm:@neykoor/baileys@8.0.3-rc18",
     "pino": "^9.6.0",
     "qrcode-terminal": "^0.12.0"
   }
