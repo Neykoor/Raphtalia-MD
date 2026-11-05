@@ -1,5 +1,7 @@
 import { normalizeMessageContent } from 'baileys'
 import config from '../../config.js'
+import { makeCache } from '../utils/cache.js'
+import { getGroupMetadata } from '../utils/groups.js'
 import { isGroupJid, isLidJid, jidNumber, normalizeJid } from '../utils/jid.js'
 
 const bodyOf = content =>
@@ -18,14 +20,22 @@ const contextOf = content => {
   return type ? content[type].contextInfo : undefined
 }
 
+const pnCache = makeCache(2000, 3600000)
+
 const resolvePn = async (sock, jid) => {
   if (!isLidJid(jid)) return jid
+
+  const cached = pnCache.get(jid)
+  if (cached) return cached
+
   try {
     const mapping = sock.signalRepository?.lidMapping
     const found = (await mapping?.getPNForLID?.(jid)) || null
     if (!found) return jid
     const value = String(found)
-    return normalizeJid(value.includes('@') ? value : `${value}@s.whatsapp.net`)
+    const pn = normalizeJid(value.includes('@') ? value : `${value}@s.whatsapp.net`)
+    pnCache.set(jid, pn)
+    return pn
   } catch {
     return jid
   }
@@ -72,12 +82,7 @@ export const serialize = async (sock, raw) => {
 
   const react = text => sock.sendMessage(chat, { react: { text, key } })
 
-  let groupRequest
-  const getGroup = () => {
-    if (!isGroup) return Promise.resolve(null)
-    groupRequest ??= sock.groupMetadata(chat).catch(() => null)
-    return groupRequest
-  }
+  const getGroup = () => (isGroup ? getGroupMetadata(sock, chat) : Promise.resolve(null))
 
   const senderNumbers = senderIds.map(jidNumber)
   const isOwner = fromMe || senderNumbers.some(number => config.owners.includes(number))
@@ -99,7 +104,7 @@ export const serialize = async (sock, raw) => {
     content,
     quoted,
     mentions: (info?.mentionedJid || []).map(normalizeJid),
-    timestamp: Number(raw.messageTimestamp) || 0,
+    timestamp: Number(raw.messageTimestamp?.toNumber?.() ?? raw.messageTimestamp) || 0,
     isOwner,
     isAdmin: false,
     isBotAdmin: false,
