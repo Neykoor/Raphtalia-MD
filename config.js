@@ -7,6 +7,10 @@ export default {
   pairingNumber: '',
   reconnectDelayMs: 3000,
   messageCacheSize: 1000,
+  messageCacheTtlMs: 3600000,
+  groupCacheSize: 500,
+  groupCacheTtlMs: 300000,
+  mediaCacheTtlMs: 1800000,
   messages: {
     owner: 'Este comando es solo para el owner.',
     group: 'Este comando solo funciona en grupos.',
