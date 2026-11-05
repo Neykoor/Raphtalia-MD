@@ -2,6 +2,7 @@ import { getContentType } from 'baileys'
 import config from '../../config.js'
 import { normalizeJid } from '../utils/jid.js'
 import log from '../utils/logger.js'
+import { printMessage } from '../utils/print.js'
 import { registry } from './loader.js'
 import { serialize } from './serialize.js'
 
@@ -60,10 +61,11 @@ export const handleMessage = async (sock, raw) => {
   await runListeners(ctx)
 
   const parsed = ctx.body ? parseCommand(ctx.body) : null
-  if (!parsed) return
+  const plugin = parsed ? registry.commands.get(parsed.command) : null
 
-  const plugin = registry.commands.get(parsed.command)
-  if (!plugin) return
+  printMessage(ctx, Boolean(plugin))
+
+  if (!parsed || !plugin) return
 
   Object.assign(ctx, parsed)
 
