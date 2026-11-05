@@ -1,12 +1,15 @@
-import { readdir, readFile } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import config from '../../../config.js'
 import { registry } from '../../core/loader.js'
+import { mediaCache } from '../../utils/cache.js'
 import { formatUptime } from '../../utils/time.js'
 
 const mediaDir = fileURLToPath(new URL('../../../media/', import.meta.url))
 const imageExtensions = ['jpg', 'jpeg', 'png', 'webp']
+
+let lastStamp = ''
 
 const findMenuImage = async () => {
   try {
@@ -15,7 +18,11 @@ const findMenuImage = async () => {
       const [name, extension] = file.toLowerCase().split(/\.(?=[^.]+$)/)
       return name === 'menu' && imageExtensions.includes(extension)
     })
-    return found ? join(mediaDir, found) : null
+    if (!found) return null
+
+    const path = join(mediaDir, found)
+    const { mtimeMs } = await stat(path)
+    return { path, stamp: `${path}:${mtimeMs}` }
   } catch {
     return null
   }
@@ -51,10 +58,15 @@ export default {
     ].join('\n')
 
     const text = [header, ...sections].join('\n\n')
-    const imagePath = await findMenuImage()
+    const image = await findMenuImage()
 
-    if (!imagePath) return ctx.reply(text)
+    if (!image) return ctx.reply(text)
 
-    await ctx.reply({ image: await readFile(imagePath), caption: text })
+    if (image.stamp !== lastStamp) {
+      mediaCache.flushAll()
+      lastStamp = image.stamp
+    }
+
+    await ctx.reply({ image: { url: image.path }, caption: text })
   }
 }
