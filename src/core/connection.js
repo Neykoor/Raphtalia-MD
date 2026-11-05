@@ -18,6 +18,7 @@ const messageCache = makeCache(config.messageCacheSize, config.messageCacheTtlMs
 
 let loginChoice = null
 let pluginsReady = false
+let badSessions = 0
 
 const resolveLogin = async registered => {
   if (registered) return null
@@ -109,6 +110,7 @@ export const start = async () => {
     if (connection === 'connecting') log.info('Conectando...')
 
     if (connection === 'open') {
+      badSessions = 0
       log.success(`${config.botName} conectado como ${sock.user?.name || sock.user?.id}`)
     }
 
@@ -117,10 +119,17 @@ export const start = async () => {
 
     const status = lastDisconnect?.error?.output?.statusCode
 
+    if (status === DisconnectReason.badSession) {
+      badSessions += 1
+      log.warn(`Sesión inválida (500), intento ${badSessions}/3`)
+      if (badSessions < 3) return restart(config.reconnectDelayMs)
+    }
+
     if (status === DisconnectReason.loggedOut || status === DisconnectReason.badSession) {
-      log.warn('Sesión cerrada o inválida. Se eliminará y tendrás que vincular de nuevo')
+      log.warn(`WhatsApp cerró la sesión (${status}). Se eliminará y tendrás que vincular de nuevo`)
       await rm(config.sessionDir, { recursive: true, force: true })
       loginChoice = null
+      badSessions = 0
       return restart(0)
     }
 
