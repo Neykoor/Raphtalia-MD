@@ -143,7 +143,7 @@ export const start = async () => {
       process.exit(1)
     }
 
-    log.warn(`Conexión cerrada (${status ?? 'desconocido'}). Reconectando...`)
+    log.warn(`Conexión cerrada (${status ?? 'desconocido'}): ${lastDisconnect?.error?.message ?? 'sin detalle'}. Reconectando...`)
     restart(status === DisconnectReason.restartRequired ? 0 : config.reconnectDelayMs)
   })
 
