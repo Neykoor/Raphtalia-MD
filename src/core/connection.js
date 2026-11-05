@@ -64,7 +64,7 @@ export const start = async () => {
   }
 
   const { state, saveCreds } = await useMultiFileAuthState(config.sessionDir)
-  const login = await resolveLogin(state.creds.registered)
+  const login = await resolveLogin(Boolean(state.creds.registered || state.creds.me))
 
   const sock = makeWASocket({
     auth: {
