@@ -17,15 +17,15 @@ const findParticipant = (group, ids) =>
   )
 
 const roleOf = participant => {
-  if (!participant) return 'No encontrado en el grupo'
-  if (participant.admin === 'superadmin' || participant.isSuperAdmin) return 'Superadmin'
-  if (participant.admin || participant.isAdmin) return 'Admin'
-  return 'Miembro'
+  if (!participant) return '✗ No encontrado en el grupo'
+  if (participant.admin === 'superadmin' || participant.isSuperAdmin) return '♛ Superadmin'
+  if (participant.admin || participant.isAdmin) return '◆ Admin'
+  return '◇ Miembro'
 }
 
-const isAdminRole = role => role === 'Admin' || role === 'Superadmin'
+const isAdminRole = role => role.includes('Admin') || role.includes('Superadmin')
 
-const yesNo = value => (value ? 'Sí' : 'No')
+const yesNo = value => (value ? '✓ Sí' : '✗ No')
 
 export default {
   name: 'checkadmin',
@@ -42,25 +42,25 @@ export default {
     const source = !lid ? 'El JID ya es un número' : alt ? 'Alt del mensaje' : mapped ? 'Mapeo LID a número' : 'Ninguno'
 
     const lines = [
-      '*Diagnóstico de administrador*',
+      '✦ *DIAGNÓSTICO DE ADMINISTRADOR* ✦',
       '',
-      '*Tu identidad*',
-      `> JID original: ${raw || 'desconocido'}`,
-      `> Tipo: ${lid ? 'LID' : 'Número'}`,
-      `> Número resuelto: ${resolved && number ? number : 'No se pudo resolver'}`,
-      `> Fuente: ${source}`,
-      `> Owner: ${yesNo(ctx.isOwner)}`
+      '❖ *Tu identidad*',
+      `> ◈ JID original: ${raw || 'desconocido'}`,
+      `> ◈ Tipo: ${lid ? 'LID' : 'Número'}`,
+      `> ◈ Número resuelto: ${resolved && number ? `✓ ${number}` : '✗ No se pudo resolver'}`,
+      `> ◈ Fuente: ${source}`,
+      `> ◈ Owner: ${yesNo(ctx.isOwner)}`
     ]
 
     if (!ctx.isGroup) {
-      lines.push('', 'Estás en un chat privado, el estado de administrador solo aplica en grupos.')
+      lines.push('', '➤ Estás en un chat privado, el estado de administrador solo aplica en grupos.')
       return ctx.reply(lines.join('\n'))
     }
 
     const group = await ctx.getGroup()
 
     if (!group) {
-      lines.push('', 'No se pudo obtener la información del grupo.')
+      lines.push('', '✗ No se pudo obtener la información del grupo.')
       return ctx.reply(lines.join('\n'))
     }
 
@@ -71,18 +71,18 @@ export default {
     const botRole = roleOf(bot)
 
     lines.push(
-      `> Rol en el grupo: ${myRole}`,
-      `> Eres admin: ${yesNo(isAdminRole(myRole))}`,
+      `> ◈ Rol en el grupo: ${myRole}`,
+      `> ◈ Eres admin: ${yesNo(isAdminRole(myRole))}`,
       '',
-      '*Bot*',
-      `> JID: ${normalizeJid(sock.user?.id) || 'desconocido'}`,
-      `> LID: ${normalizeJid(sock.user?.lid) || 'desconocido'}`,
-      `> Rol en el grupo: ${botRole}`,
-      `> Es admin: ${yesNo(isAdminRole(botRole))}`,
+      '❖ *Bot*',
+      `> ◈ JID: ${normalizeJid(sock.user?.id) || 'desconocido'}`,
+      `> ◈ LID: ${normalizeJid(sock.user?.lid) || 'desconocido'}`,
+      `> ◈ Rol en el grupo: ${botRole}`,
+      `> ◈ Es admin: ${yesNo(isAdminRole(botRole))}`,
       '',
-      '*Grupo*',
-      `> Modo de direccionamiento: ${group.addressingMode || 'desconocido'}`,
-      `> Participantes: ${group.participants.length}`
+      '❖ *Grupo*',
+      `> ◈ Modo de direccionamiento: ${group.addressingMode || 'desconocido'}`,
+      `> ◈ Participantes: ${group.participants.length}`
     )
 
     await ctx.reply(lines.join('\n'))
