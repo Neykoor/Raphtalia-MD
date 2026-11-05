@@ -8,7 +8,7 @@ import makeWASocket, {
 } from 'baileys'
 import config from '../../config.js'
 import { makeCache, mediaCache } from '../utils/cache.js'
-import { bindGroupCache, getGroupMetadata } from '../utils/groups.js'
+import { bindGroupCache, groupCache } from '../utils/groups.js'
 import log, { silent } from '../utils/logger.js'
 import { ask } from '../utils/prompt.js'
 import { handleMessage } from './handler.js'
@@ -76,7 +76,7 @@ export const start = async () => {
     syncFullHistory: false,
     mediaCache,
     shouldIgnoreJid: jid => jid === 'status@broadcast' || jid?.endsWith('@newsletter'),
-    cachedGroupMetadata: jid => getGroupMetadata(sock, jid),
+    cachedGroupMetadata: async jid => groupCache.get(jid),
     getMessage: async key => messageCache.get(key.id)
   })
 
