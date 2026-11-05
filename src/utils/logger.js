@@ -1,6 +1,6 @@
 import pino from 'pino'
 
-const colors = {
+export const colors = {
   reset: '\x1b[0m',
   gray: '\x1b[90m',
   red: '\x1b[31m',
@@ -9,7 +9,7 @@ const colors = {
   cyan: '\x1b[36m'
 }
 
-const stamp = () => new Date().toLocaleTimeString('es-MX', { hour12: false })
+export const stamp = () => new Date().toLocaleTimeString('es-MX', { hour12: false })
 
 const write = (color, label, args) => {
   console.log(`${colors.gray}${stamp()}${colors.reset} ${color}${label}${colors.reset}`, ...args)
