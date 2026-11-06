@@ -1,16 +1,17 @@
 import { isJadibotActive, startJadibot } from '../../core/jadibot.js'
 import { isLidJid, jidNumber } from '../../utils/jid.js'
+import log from '../../utils/logger.js'
 
 export default {
   name: 'jadibot',
-  aliases: ['serbot', 'subbot'],
+  aliases: ['code', 'serbot', 'subbot'],
   description: 'Vincula tu número como sub-bot con un código',
-  privateOnly: true,
   run: async ctx => {
     if (ctx.sock.isJadibot) return ctx.reply('Este comando solo se usa desde el bot principal.')
 
     const typed = (ctx.args[0] || '').replace(/\D/g, '')
-    const number = ctx.isOwner && typed ? typed : isLidJid(ctx.sender) ? '' : ctx.senderNumber
+    const own = isLidJid(ctx.sender) ? '' : ctx.senderNumber
+    const number = typed && (ctx.isOwner || !own) ? typed : own
 
     if (!/^\d{8,15}$/.test(number)) {
       return ctx.reply(`No pude detectar tu número. Usa: ${ctx.prefix}${ctx.command} 5210000000000`)
@@ -24,22 +25,28 @@ export default {
 
     await ctx.reply('Generando tu código de emparejamiento...')
 
-    await startJadibot(number, {
-      onCode: async code => {
-        await ctx.reply(
-          [
-            '*Vincula tu sub-bot*',
-            '1. Abre WhatsApp > Dispositivos vinculados',
-            '2. Vincular con el número de teléfono',
-            '3. Escribe el código de abajo',
-            'El código dura pocos minutos.'
-          ].join('\n')
-        )
-        await ctx.send(code)
-      },
-      onFail: () => {
-        ctx.reply('No se completó la vinculación. Usa el comando de nuevo para pedir otro código.').catch(() => {})
-      }
-    })
+    try {
+      await startJadibot(number, {
+        onCode: async code => {
+          await ctx.reply(
+            [
+              '*Vincula tu sub-bot*',
+              '1. Abre WhatsApp > Dispositivos vinculados',
+              '2. Vincular con el número de teléfono',
+              '3. Escribe el código de abajo',
+              'El código dura pocos minutos.'
+            ].join('\n')
+          )
+          await ctx.send(code)
+        },
+        onLinked: () => ctx.reply('Sub-bot vinculado y conectado correctamente ✓').catch(() => {}),
+        onFail: () => {
+          ctx.reply(`No se completó la vinculación. Usa ${ctx.prefix}${ctx.command} de nuevo para pedir otro código.`).catch(() => {})
+        }
+      })
+    } catch (error) {
+      log.error(`No se pudo generar el código del jadibot ${number}:`, error?.message ?? error)
+      await ctx.reply('No pude generar el código. Intenta de nuevo en unos segundos.').catch(() => {})
+    }
   }
 }
