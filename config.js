@@ -3,6 +3,8 @@ export default {
   prefixes: ['.', '/', '!', '#'],
   owners: ['5210000000000'],
   sessionDir: 'session',
+  jadibotDir: 'session-jadibot',
+  jadibotYieldToMain: true,
   loginMethod: 'ask',
   pairingNumber: '',
   reconnectDelayMs: 3000,
