@@ -7,6 +7,7 @@ import makeWASocket, {
   useMultiFileAuthState
 } from 'baileys'
 import config from '../../config.js'
+import { main } from '../utils/bots.js'
 import { makeCache, mediaCache } from '../utils/cache.js'
 import { bindGroupCache, groupCache } from '../utils/groups.js'
 import log, { silent } from '../utils/logger.js'
@@ -92,6 +93,8 @@ export const start = async () => {
     cachedGroupMetadata: async jid => groupCache.get(jid),
     getMessage: async key => messageCache.get(key.id)
   })
+
+  main.sock = sock
 
   let closed = false
   let openedAt = 0
