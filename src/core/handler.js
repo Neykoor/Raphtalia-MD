@@ -1,6 +1,6 @@
 import { getContentType } from 'baileys'
 import config from '../../config.js'
-import { main, subs } from '../utils/bots.js'
+import { main } from '../utils/bots.js'
 import { isBotOff } from '../utils/botstate.js'
 import { jidNumber, normalizeJid } from '../utils/jid.js'
 import log from '../utils/logger.js'
@@ -52,8 +52,6 @@ const mainIsHere = async ctx => {
 
 const chatIs = (ctx, ...ids) => ids.filter(Boolean).some(id => jidNumber(id) === jidNumber(ctx.chat))
 
-const senderHasSub = ctx => ctx.senderIds.some(id => subs.get(jidNumber(id))?.online)
-
 const runListeners = async ctx => {
   for (const plugin of registry.listeners) {
     try {
@@ -85,7 +83,6 @@ export const handleMessage = async (sock, raw) => {
   const plugin = parsed ? registry.commands.get(parsed.command) : null
 
   if (plugin && sock.isJadibot && ctx.fromMe && plugin.category === 'jadibot' && !chatIs(ctx, sock.user?.id, sock.user?.lid)) return
-  if (plugin && !sock.isJadibot && ctx.isGroup && !ctx.fromMe && plugin.category !== 'jadibot' && senderHasSub(ctx)) return
 
   printMessage(ctx, Boolean(plugin))
 
@@ -118,4 +115,4 @@ export const handleMessage = async (sock, raw) => {
     log.error(`Error en el comando ${plugin.name}:`, error?.message ?? error)
     await ctx.reply(messages.error).catch(() => {})
   }
-    }
+}
