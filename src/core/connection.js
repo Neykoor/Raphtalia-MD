@@ -86,7 +86,7 @@ export const start = async () => {
     browser: Browsers.windows('Chrome'),
     markOnlineOnConnect: false,
     keepAliveIntervalMs: 20000,
-    retryRequestDelayMs: 5000,
+    retryRequestDelayMs: 250,
     syncFullHistory: false,
     mediaCache,
     shouldIgnoreJid: jid => jid === 'status@broadcast' || jid?.endsWith('@newsletter'),
@@ -178,4 +178,4 @@ export const start = async () => {
       log.error('No se pudo generar el código de emparejamiento:', error?.message ?? error)
     }
   }
-}
+  }
