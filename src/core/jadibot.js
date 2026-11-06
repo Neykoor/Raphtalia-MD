@@ -13,6 +13,7 @@ import { subs } from '../utils/bots.js'
 import { makeCache, mediaCache } from '../utils/cache.js'
 import { bindGroupCache, groupCache } from '../utils/groups.js'
 import log, { silent } from '../utils/logger.js'
+import { bindWelcome } from '../utils/welcome.js'
 import { handleMessage } from './handler.js'
 
 const maxDelayMs = 30000
@@ -94,6 +95,7 @@ const open = async (sub, hooks) => {
   sock.ev.on('creds.update', saveCreds)
 
   bindGroupCache(sock)
+  bindWelcome(sock)
 
   sock.ev.on('messages.upsert', ({ messages, type }) => {
     for (const message of messages) {
@@ -234,4 +236,4 @@ export const restoreJadibots = async () => {
   } catch (error) {
     log.error('No se pudieron restaurar los jadibots:', error?.message ?? error)
   }
-          }
+}
