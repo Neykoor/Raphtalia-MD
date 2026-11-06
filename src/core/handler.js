@@ -1,6 +1,6 @@
 import { getContentType } from 'baileys'
 import config from '../../config.js'
-import { main } from '../utils/bots.js'
+import { main, subs } from '../utils/bots.js'
 import { isBotOff } from '../utils/botstate.js'
 import { jidNumber, normalizeJid } from '../utils/jid.js'
 import log from '../utils/logger.js'
@@ -50,6 +50,10 @@ const mainIsHere = async ctx => {
   return Boolean(group?.participants.some(item => matches(item, mainIds)))
 }
 
+const chatIs = (ctx, ...ids) => ids.filter(Boolean).some(id => jidNumber(id) === jidNumber(ctx.chat))
+
+const senderHasSub = ctx => ctx.senderIds.some(id => subs.get(jidNumber(id))?.online)
+
 const runListeners = async ctx => {
   for (const plugin of registry.listeners) {
     try {
@@ -68,7 +72,10 @@ export const handleMessage = async (sock, raw) => {
 
   const ctx = await serialize(sock, raw)
 
-  if (sock.isJadibot && ctx.isGroup && config.jadibotYieldToMain && (await mainIsHere(ctx))) return
+  if (sock.isJadibot) {
+    if (ctx.isGroup && !ctx.fromMe && config.jadibotYieldToMain && (await mainIsHere(ctx))) return
+    if (ctx.fromMe && !ctx.isGroup && chatIs(ctx, main.sock?.user?.id, main.sock?.user?.lid)) return
+  }
 
   const silenced = ctx.isGroup && isBotOff(jidNumber(sock.user?.id), ctx.chat)
 
@@ -76,6 +83,9 @@ export const handleMessage = async (sock, raw) => {
 
   const parsed = ctx.body ? parseCommand(ctx.body) : null
   const plugin = parsed ? registry.commands.get(parsed.command) : null
+
+  if (plugin && sock.isJadibot && ctx.fromMe && plugin.category === 'jadibot' && !chatIs(ctx, sock.user?.id, sock.user?.lid)) return
+  if (plugin && !sock.isJadibot && ctx.isGroup && !ctx.fromMe && plugin.category !== 'jadibot' && senderHasSub(ctx)) return
 
   printMessage(ctx, Boolean(plugin))
 
@@ -108,4 +118,4 @@ export const handleMessage = async (sock, raw) => {
     log.error(`Error en el comando ${plugin.name}:`, error?.message ?? error)
     await ctx.reply(messages.error).catch(() => {})
   }
-}
+    }
