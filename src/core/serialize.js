@@ -85,7 +85,7 @@ export const serialize = async (sock, raw) => {
   const getGroup = () => (isGroup ? getGroupMetadata(sock, chat) : Promise.resolve(null))
 
   const senderNumbers = senderIds.map(jidNumber)
-  const isOwner = fromMe || senderNumbers.some(number => config.owners.includes(number))
+  const isOwner = (fromMe && !sock.isJadibot) || senderNumbers.some(number => config.owners.includes(number))
 
   return {
     sock,
