@@ -1,4 +1,5 @@
 import { start } from './src/core/connection.js'
+import { restoreJadibots } from './src/core/jadibot.js'
 import log from './src/utils/logger.js'
 
 process.on('unhandledRejection', error => {
@@ -9,7 +10,9 @@ process.on('uncaughtException', error => {
   log.error('Excepción no capturada:', error?.message ?? error)
 })
 
-start().catch(error => {
-  log.error('No se pudo iniciar el bot:', error?.message ?? error)
-  process.exit(1)
-})
+start()
+  .then(() => restoreJadibots())
+  .catch(error => {
+    log.error('No se pudo iniciar el bot:', error?.message ?? error)
+    process.exit(1)
+  })
