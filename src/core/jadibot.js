@@ -9,12 +9,11 @@ import makeWASocket, {
   useMultiFileAuthState
 } from 'baileys'
 import config from '../../config.js'
+import { subs } from '../utils/bots.js'
 import { makeCache, mediaCache } from '../utils/cache.js'
 import { bindGroupCache, groupCache } from '../utils/groups.js'
 import log, { silent } from '../utils/logger.js'
 import { handleMessage } from './handler.js'
-
-const subs = new Map()
 
 const maxDelayMs = 30000
 const stableAfterMs = 60000
@@ -235,4 +234,4 @@ export const restoreJadibots = async () => {
   } catch (error) {
     log.error('No se pudieron restaurar los jadibots:', error?.message ?? error)
   }
-      }
+}
