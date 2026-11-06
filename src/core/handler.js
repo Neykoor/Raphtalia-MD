@@ -4,6 +4,7 @@ import { main } from '../utils/bots.js'
 import { isBotOff } from '../utils/botstate.js'
 import { jidNumber, normalizeJid } from '../utils/jid.js'
 import log from '../utils/logger.js'
+import { getPrimary, primaryAlive } from '../utils/primary.js'
 import { printMessage } from '../utils/print.js'
 import { registry } from './loader.js'
 import { serialize } from './serialize.js'
@@ -70,8 +71,13 @@ export const handleMessage = async (sock, raw) => {
 
   const ctx = await serialize(sock, raw)
 
+  const primary = ctx.isGroup ? getPrimary(ctx.chat) : null
+  const primaryActive = Boolean(primary) && primaryAlive(primary)
+
+  if (primaryActive && jidNumber(sock.user?.id) !== primary) return
+
   if (sock.isJadibot) {
-    if (ctx.isGroup && !ctx.fromMe && config.jadibotYieldToMain && (await mainIsHere(ctx))) return
+    if (ctx.isGroup && !ctx.fromMe && !primaryActive && config.jadibotYieldToMain && (await mainIsHere(ctx))) return
     if (ctx.fromMe && !ctx.isGroup && chatIs(ctx, main.sock?.user?.id, main.sock?.user?.lid)) return
   }
 
