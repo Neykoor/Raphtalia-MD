@@ -76,7 +76,7 @@ const open = async (sub, hooks) => {
     browser: Browsers.windows('Chrome'),
     markOnlineOnConnect: false,
     keepAliveIntervalMs: 20000,
-    retryRequestDelayMs: 5000,
+    retryRequestDelayMs: 250,
     syncFullHistory: false,
     mediaCache,
     shouldIgnoreJid: jid => jid === 'status@broadcast' || jid?.endsWith('@newsletter'),
@@ -234,4 +234,4 @@ export const restoreJadibots = async () => {
   } catch (error) {
     log.error('No se pudieron restaurar los jadibots:', error?.message ?? error)
   }
-}
+          }
