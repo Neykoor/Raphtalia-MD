@@ -1,6 +1,8 @@
 import { getContentType } from 'baileys'
 import config from '../../config.js'
-import { normalizeJid } from '../utils/jid.js'
+import { main } from '../utils/bots.js'
+import { isBotOff } from '../utils/botstate.js'
+import { jidNumber, normalizeJid } from '../utils/jid.js'
 import log from '../utils/logger.js'
 import { printMessage } from '../utils/print.js'
 import { registry } from './loader.js'
@@ -40,6 +42,14 @@ const adminFlags = async ctx => {
   }
 }
 
+const mainIsHere = async ctx => {
+  const mainIds = new Set([normalizeJid(main.sock?.user?.id), normalizeJid(main.sock?.user?.lid)].filter(Boolean))
+  if (!mainIds.size) return false
+
+  const group = await ctx.getGroup()
+  return Boolean(group?.participants.some(item => matches(item, mainIds)))
+}
+
 const runListeners = async ctx => {
   for (const plugin of registry.listeners) {
     try {
@@ -58,7 +68,11 @@ export const handleMessage = async (sock, raw) => {
 
   const ctx = await serialize(sock, raw)
 
-  await runListeners(ctx)
+  if (sock.isJadibot && ctx.isGroup && config.jadibotYieldToMain && (await mainIsHere(ctx))) return
+
+  const silenced = ctx.isGroup && isBotOff(jidNumber(sock.user?.id), ctx.chat)
+
+  if (!silenced) await runListeners(ctx)
 
   const parsed = ctx.body ? parseCommand(ctx.body) : null
   const plugin = parsed ? registry.commands.get(parsed.command) : null
@@ -68,6 +82,12 @@ export const handleMessage = async (sock, raw) => {
   if (!parsed || !plugin) return
 
   Object.assign(ctx, parsed)
+
+  if (silenced) {
+    if (plugin.name !== 'bot') return
+    Object.assign(ctx, await adminFlags(ctx))
+    if (!ctx.isAdmin && !ctx.isOwner) return
+  }
 
   const { messages } = config
 
