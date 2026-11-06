@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { normalizeJid } from './jid.js'
 
 const file = fileURLToPath(new URL('../../data/settings.json', import.meta.url))
 
@@ -10,6 +11,11 @@ export const features = {
   welcome: {
     label: 'Bienvenidas y despedidas',
     aliases: ['welcome', 'bienvenida', 'bienvenidas', 'despedida', 'despedidas', 'goodbye', 'bye']
+  },
+  antilink: {
+    label: 'Antilink de grupos y canales',
+    aliases: ['antilink', 'antilinks', 'antienlace', 'antienlaces'],
+    needsAdmin: true
   }
 }
 
@@ -50,6 +56,19 @@ export const resolveFeature = name => {
   return Object.keys(features).find(key => features[key].aliases.includes(value)) ?? null
 }
 
+const botIsAdmin = async ctx => {
+  const group = await ctx.getGroup()
+  const ids = new Set([normalizeJid(ctx.sock.user?.id), normalizeJid(ctx.sock.user?.lid)].filter(Boolean))
+
+  return Boolean(
+    group?.participants.some(
+      item =>
+        (item.admin || item.isAdmin || item.isSuperAdmin) &&
+        [item.id, item.lid, item.phoneNumber].some(id => id && ids.has(normalizeJid(id)))
+    )
+  )
+}
+
 export const switchFeature = async (ctx, enabled) => {
   const name = (ctx.args[0] || '').toLowerCase()
   const on = `${ctx.prefix}on`
@@ -76,11 +95,13 @@ export const switchFeature = async (ctx, enabled) => {
 
   setEnabled(ctx.chat, key, enabled)
 
-  await ctx.reply(
-    box(enabled ? 'Función activada' : 'Función desactivada', [
-      `Función: ${label} ❀`,
-      `Estado: ${enabled ? 'activado ✓' : 'desactivado ✗'}`,
-      'Hecho ♡'
-    ])
-  )
+  const lines = [`Función: ${label} ❀`, `Estado: ${enabled ? 'activado ✓' : 'desactivado ✗'}`]
+
+  if (enabled && features[key].needsAdmin && !(await botIsAdmin(ctx))) {
+    lines.push('Necesito ser administrador para que funcione ✗')
+  }
+
+  lines.push('Hecho ♡')
+
+  await ctx.reply(box(enabled ? 'Función activada' : 'Función desactivada', lines))
 }
