@@ -5,6 +5,7 @@ export default {
   sessionDir: 'session',
   jadibotDir: 'session-jadibot',
   jadibotYieldToMain: true,
+  timezone: 'America/Bogota',
   loginMethod: 'ask',
   pairingNumber: '',
   reconnectDelayMs: 3000,
