@@ -124,9 +124,15 @@ export const setGroupOpen = async (ctx, open) => {
 
   groupCache.del(ctx.chat)
 
-  await ctx.reply(
-    open
-      ? box('Grupo abierto', ['Todos pueden escribir ✿', 'Hecho ♡'])
-      : box('Grupo cerrado', ['Solo los admins pueden escribir ❀', 'Hecho ♡'])
-  )
+  const senderIds = new Set(ctx.senderIds)
+  const author = group.participants.find(item => matches(item, senderIds))
+  const mention = author?.id || ctx.sender
+  const tag = `@${jidNumber(mention)}`
+
+  await ctx.reply({
+    text: open
+      ? box('Grupo abierto', [`Por: ${tag}`, 'Todos pueden escribir ✿', 'Hecho ♡'])
+      : box('Grupo cerrado', [`Por: ${tag}`, 'Solo los admins pueden escribir ❀', 'Hecho ♡']),
+    mentions: [mention]
+  })
 }
