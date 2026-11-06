@@ -102,3 +102,31 @@ export const kickMember = async ctx => {
 
   await reply('Usuario expulsado', [`Usuario: ${tag}`, 'Estado: fuera del grupo ✓', 'Hecho ♡'])
 }
+
+export const setGroupOpen = async (ctx, open) => {
+  const group = await ctx.getGroup()
+
+  if (!group) return ctx.reply(box('Sin información', ['No pude ver el grupo ✗']))
+
+  if (Boolean(group.announce) === !open) {
+    return ctx.reply(
+      open
+        ? box('Sin cambios', ['El grupo ya está abierto ❀', 'Todos pueden escribir ✿'])
+        : box('Sin cambios', ['El grupo ya está cerrado ❀', 'Solo los admins escriben ✿'])
+    )
+  }
+
+  try {
+    await ctx.sock.groupSettingUpdate(ctx.chat, open ? 'not_announcement' : 'announcement')
+  } catch {
+    return ctx.reply(box('No se pudo completar', ['No pude cambiar el grupo ✗']))
+  }
+
+  groupCache.del(ctx.chat)
+
+  await ctx.reply(
+    open
+      ? box('Grupo abierto', ['Todos pueden escribir ✿', 'Hecho ♡'])
+      : box('Grupo cerrado', ['Solo los admins pueden escribir ❀', 'Hecho ♡'])
+  )
+}
