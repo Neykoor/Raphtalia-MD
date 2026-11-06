@@ -12,6 +12,7 @@ import { makeCache, mediaCache } from '../utils/cache.js'
 import { bindGroupCache, groupCache } from '../utils/groups.js'
 import log, { silent } from '../utils/logger.js'
 import { ask } from '../utils/prompt.js'
+import { bindWelcome } from '../utils/welcome.js'
 import { handleMessage } from './handler.js'
 import { loadPlugins } from './loader.js'
 
@@ -102,6 +103,7 @@ export const start = async () => {
   sock.ev.on('creds.update', saveCreds)
 
   bindGroupCache(sock)
+  bindWelcome(sock)
 
   sock.ev.on('messages.upsert', ({ messages, type }) => {
     for (const message of messages) {
@@ -178,4 +180,4 @@ export const start = async () => {
       log.error('No se pudo generar el código de emparejamiento:', error?.message ?? error)
     }
   }
-  }
+}
