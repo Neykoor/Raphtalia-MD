@@ -19,6 +19,7 @@ const subs = new Map()
 const maxDelayMs = 30000
 const stableAfterMs = 60000
 const pairingTimeoutMs = 180000
+const pairingDelayMs = 3000
 
 const sessionPath = number => join(config.jadibotDir, number)
 
@@ -120,6 +121,7 @@ const open = async (sub, hooks) => {
       if (sub.fresh) {
         sub.fresh = false
         await welcome(sock).catch(() => {})
+        await hooks.onLinked?.()
       }
     }
 
@@ -164,6 +166,8 @@ const open = async (sub, hooks) => {
   })
 
   if (!linked && hooks.onCode) {
+    await new Promise(resolve => setTimeout(resolve, pairingDelayMs))
+    if (sub.stopped) return
     const code = await sock.requestPairingCode(sub.number)
     sub.pairTimer = setTimeout(async () => {
       if (sub.stopped || sub.online) return
@@ -231,4 +235,4 @@ export const restoreJadibots = async () => {
   } catch (error) {
     log.error('No se pudieron restaurar los jadibots:', error?.message ?? error)
   }
-}
+      }
