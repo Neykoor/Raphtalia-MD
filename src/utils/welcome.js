@@ -5,6 +5,7 @@ import config from '../../config.js'
 import { main } from './bots.js'
 import { isBotOff } from './botstate.js'
 import { makeCache } from './cache.js'
+import { getGreetingMedia, getGreetingText } from './greetings.js'
 import { getGroupMetadata, groupCache } from './groups.js'
 import { jidNumber, normalizeJid } from './jid.js'
 import log from './logger.js'
@@ -21,6 +22,9 @@ const recent = makeCache(1000, 20000)
 const box = (title, lines) => [`₊˚✧ *${title}* ✧˚₊`, ...lines.map(line => `> ✧ ${line}`)].join('\n')
 
 const idsOf = participant => [participant.id, participant.lid, participant.phoneNumber].filter(Boolean).map(normalizeJid)
+
+const render = (template, values) =>
+  template.replace(/\{(user|group|members|desc|author)\}/gi, (_, key) => values[key.toLowerCase()])
 
 const findMedia = async names => {
   try {
@@ -53,7 +57,20 @@ const pictureOf = async (sock, participant) => {
   return null
 }
 
-const send = async (sock, chat, text, mentions, picture, fallback) => {
+const send = async (sock, chat, text, mentions, custom, picture, fallback) => {
+  if (custom) {
+    try {
+      const payload =
+        custom.type === 'video'
+          ? { video: { url: custom.path }, gifPlayback: custom.gif, caption: text, mentions }
+          : { image: { url: custom.path }, caption: text, mentions }
+      await sock.sendMessage(chat, payload)
+      return
+    } catch (error) {
+      log.warn('No se pudo enviar el archivo personalizado:', error?.message ?? error)
+    }
+  }
+
   const sources = [picture, fallback].filter(Boolean)
 
   for (const url of sources) {
@@ -100,6 +117,9 @@ const handle = async (sock, update) => {
   const members = group.participants.length
   const subject = group.subject || 'este grupo'
   const authorId = normalizeJid(author)
+  const kind = action === 'add' ? 'welcome' : 'goodbye'
+  const template = getGreetingText(chat, kind)
+  const custom = getGreetingMedia(chat, kind)
 
   let sent = 0
 
@@ -120,28 +140,32 @@ const handle = async (sock, update) => {
 
     const tag = `@${jidNumber(participant.id)}`
     const mentions = [participant.id]
-    const picture = await pictureOf(sock, participant)
+    const actor = authorId && !ids.includes(authorId) ? authorId : ''
+    const picture = custom ? null : await pictureOf(sock, participant)
+    const fallback = custom ? null : await findMedia(action === 'add' ? ['welcome', 'default'] : ['goodbye', 'default'])
 
     let text
-    let fallback
 
-    if (action === 'add') {
-      fallback = await findMedia(['welcome', 'default'])
+    if (template) {
+      if (actor && /\{author\}/i.test(template)) mentions.push(actor)
+
+      text = render(template, {
+        user: tag,
+        group: subject,
+        members: String(members),
+        desc: group.desc || '',
+        author: actor ? `@${jidNumber(actor)}` : ''
+      })
+    } else if (action === 'add') {
       text = box('Bienvenido', [`Usuario: ${tag} ❀`, `Grupo: ${subject} ✿`, `Miembros: ${members} ♡`])
+    } else if (actor) {
+      mentions.push(actor)
+      text = box('Hasta nunca', [`Usuario: ${tag} ❀`, `Eliminado por: @${jidNumber(actor)} ✧`, `Miembros: ${members} ♡`])
     } else {
-      fallback = await findMedia(['goodbye', 'default'])
-
-      const kicked = Boolean(authorId) && !ids.includes(authorId)
-
-      if (kicked) {
-        mentions.push(authorId)
-        text = box('Hasta nunca', [`Usuario: ${tag} ❀`, `Eliminado por: @${jidNumber(authorId)} ✧`, `Miembros: ${members} ♡`])
-      } else {
-        text = box('Hasta pronto', [`Usuario: ${tag} ❀`, `Salió de ${subject} ✿`, `Miembros: ${members} ♡`])
-      }
+      text = box('Hasta pronto', [`Usuario: ${tag} ❀`, `Salió de ${subject} ✿`, `Miembros: ${members} ♡`])
     }
 
-    await send(sock, chat, text, mentions, picture, fallback)
+    await send(sock, chat, text, mentions, custom, picture, fallback)
   }
 }
 
@@ -151,4 +175,4 @@ export const bindWelcome = sock => {
       log.error('Error en bienvenidas y despedidas:', error?.message ?? error)
     })
   })
-}
+      }
