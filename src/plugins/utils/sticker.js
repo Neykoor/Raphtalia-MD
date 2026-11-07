@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { downloadMediaMessage } from 'baileys'
 import config from '../../../config.js'
 import log, { silent } from '../../utils/logger.js'
+import { getStickerInfo } from '../../utils/stickerinfo.js'
 
 const box = (title, lines) => [`₊˚✧ *${title}* ✧˚₊`, ...lines.map(line => `> ✧ ${line}`)].join('\n')
 
@@ -41,7 +42,7 @@ const pickSource = ctx => {
   if (own.imageMessage || own.videoMessage) return { content: own, source: ctx.raw }
 
   const quoted = ctx.quoted
-  if (!quoted?.message?.imageMessage && !quoted?.message?.videoMessage) return null
+  if (!quoted?.message?.imageMessage && !quoted?.message?.videoMessage && !quoted?.message?.stickerMessage) return null
 
   return {
     content: quoted.message,
@@ -97,12 +98,27 @@ const buildExif = (pack, author) => {
   return exif
 }
 
-const addExif = (webp, exif) => {
-  if (webp.toString('latin1', 0, 4) !== 'RIFF' || webp.toString('latin1', 8, 12) !== 'WEBP') {
-    throw new Error('ffmpeg no generó un WEBP válido')
+const stripExif = webp => {
+  const parts = []
+  let offset = 12
+
+  while (offset + 8 <= webp.length) {
+    const id = webp.toString('latin1', offset, offset + 4)
+    const size = webp.readUInt32LE(offset + 4)
+    const end = Math.min(offset + 8 + size + (size % 2), webp.length)
+    if (id !== 'EXIF') parts.push(webp.subarray(offset, end))
+    offset = end
   }
 
-  let body = Buffer.from(webp.subarray(12))
+  return Buffer.concat(parts)
+}
+
+const addExif = (webp, exif) => {
+  if (webp.toString('latin1', 0, 4) !== 'RIFF' || webp.toString('latin1', 8, 12) !== 'WEBP') {
+    throw new Error('el archivo no es un WEBP válido')
+  }
+
+  let body = stripExif(webp)
   const first = body.toString('latin1', 0, 4)
 
   if (first === 'VP8X') {
@@ -164,8 +180,9 @@ export default {
       return ctx.reply(
         box('Falta una imagen o video', [
           'Envía una imagen, video o GIF con el comando ✿',
-          'O responde a uno ❀',
-          `Ejemplo: ${ctx.prefix}${ctx.command} Paquete | Autor ✧`
+          'O responde a uno, o a un sticker para cambiarle el paquete y autor ❀',
+          `Ejemplo: ${ctx.prefix}${ctx.command} Paquete | Autor ✧`,
+          `Guarda tus datos con ${ctx.prefix}setsticker Paquete | Autor ♡`
         ])
       )
     }
@@ -173,16 +190,18 @@ export default {
     const { content, source } = picked
     const video = content.videoMessage
     const image = content.imageMessage
+    const existing = content.stickerMessage
 
-    if (Number(video?.fileLength ?? image?.fileLength) > MAX_INPUT) {
+    if (Number(video?.fileLength ?? image?.fileLength ?? existing?.fileLength) > MAX_INPUT) {
       return ctx.reply(box('Archivo muy pesado', [`El máximo es ${MAX_INPUT / 1024 / 1024} MB ✗`]))
     }
 
     const [packText, authorText] = ctx.text.split('|')
-    const pack = (packText || '').trim().slice(0, MAX_NAME) || config.botName
-    const author = (authorText || '').trim().slice(0, MAX_NAME) || ctx.pushName || config.botName
+    const saved = getStickerInfo(ctx.senderNumber)
+    const pack = (packText || '').trim().slice(0, MAX_NAME) || saved?.pack || config.botName
+    const author = (authorText || '').trim().slice(0, MAX_NAME) || saved?.author || ctx.pushName || config.botName
 
-    log.info(`Sticker: procesando ${video ? 'video' : 'imagen'}`)
+    log.info(`Sticker: procesando ${existing ? 'sticker' : video ? 'video' : 'imagen'}`)
 
     await mark(ctx, '🕒')
 
@@ -198,7 +217,7 @@ export default {
         return ctx.reply(box('No se pudo completar', ['No pude descargar el archivo ✗']))
       }
 
-      const webp = await encode({ buffer, extension: video ? 'mp4' : extensionOf(image.mimetype) }, Boolean(video))
+      const webp = existing ? buffer : await encode({ buffer, extension: video ? 'mp4' : extensionOf(image.mimetype) }, Boolean(video))
 
       await ctx.reply({ sticker: addExif(webp, buildExif(pack, author)) })
       await mark(ctx, '✔️')
