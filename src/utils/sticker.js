@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { downloadMediaMessage } from 'baileys'
 import config from '../../../config.js'
-import { silent } from '../../utils/logger.js'
+import log, { silent } from '../../utils/logger.js'
 
 const box = (title, lines) => [`₊˚✧ *${title}* ✧˚₊`, ...lines.map(line => `> ✧ ${line}`)].join('\n')
 
@@ -24,7 +24,17 @@ const ANIMATED_ATTEMPTS = [
 ]
 const FRAME = 'scale=512:512:force_original_aspect_ratio=decrease,format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000'
 
+const DOWNLOAD_TIMEOUT = 60000
+
 const mark = (ctx, emoji) => ctx.react(emoji).catch(() => {})
+
+const withTimeout = (promise, ms, message) => {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
 
 const pickSource = ctx => {
   const own = ctx.content
@@ -172,10 +182,16 @@ export default {
     const pack = (packText || '').trim().slice(0, MAX_NAME) || config.botName
     const author = (authorText || '').trim().slice(0, MAX_NAME) || ctx.pushName || config.botName
 
+    log.info(`Sticker: procesando ${video ? 'video' : 'imagen'}`)
+
     await mark(ctx, '🕒')
 
     try {
-      const buffer = await downloadMediaMessage(source, 'buffer', {}, { logger: silent, reuploadRequest: ctx.sock.updateMediaMessage })
+      const buffer = await withTimeout(
+        downloadMediaMessage(source, 'buffer', {}, { logger: silent, reuploadRequest: ctx.sock.updateMediaMessage }),
+        DOWNLOAD_TIMEOUT,
+        'la descarga tardó demasiado'
+      )
 
       if (!buffer?.length) {
         await mark(ctx, '✖️')
@@ -186,7 +202,9 @@ export default {
 
       await ctx.reply({ sticker: addExif(webp, buildExif(pack, author)) })
       await mark(ctx, '✔️')
+      log.success('Sticker: enviado')
     } catch (error) {
+      log.error('Sticker:', error?.message ?? error)
       await mark(ctx, '✖️')
       await ctx.reply(box('No se pudo completar', ['No pude crear el sticker ✗', `Motivo: ${error?.message ?? 'desconocido'} ✧`]))
     }
