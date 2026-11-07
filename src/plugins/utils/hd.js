@@ -1,19 +1,23 @@
-import { spawn } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { randomBytes } from 'node:crypto'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { downloadMediaMessage } from 'baileys'
 import { silent } from '../../utils/logger.js'
 
 const box = (title, lines) => [`₊˚✧ *${title}* ✧˚₊`, ...lines.map(line => `> ✧ ${line}`)].join('\n')
 
-const API = 'https://us-central1-vector-ink.cloudfunctions.net/upscaleImage'
-const ORIGIN = 'https://vectorink.io'
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36'
-const API_TIMEOUT = 120000
-const FFMPEG_TIMEOUT = 60000
+const BASE = 'https://image-upscaling.net'
+const MODEL = 'general'
+const SCALE = 2
+const FACE_ENHANCE = true
+const REQUEST_TIMEOUT = 60000
+const MAX_WAIT = 150000
+const POLL_INTERVAL = 2000
+const ALPHABET = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 
 const mark = (ctx, emoji) => ctx.react(emoji).catch(() => {})
+
+const newClientId = () =>
+  Array.from(randomBytes(32), byte => ALPHABET[byte % ALPHABET.length]).join('')
 
 const detectFormat = buffer => {
   if (buffer.length < 12) return null
@@ -35,78 +39,59 @@ const pickSource = ctx => {
   }
 }
 
-const runFfmpeg = args =>
-  new Promise((resolve, reject) => {
-    const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] })
-    let stderr = ''
-
-    const timer = setTimeout(() => {
-      proc.kill('SIGKILL')
-      reject(new Error('ffmpeg tardó demasiado'))
-    }, FFMPEG_TIMEOUT)
-
-    proc.stderr.on('data', chunk => {
-      stderr += chunk.toString()
-    })
-
-    proc.on('error', error => {
-      clearTimeout(timer)
-      reject(error.code === 'ENOENT' ? new Error('ffmpeg no está instalado') : error)
-    })
-
-    proc.on('close', code => {
-      clearTimeout(timer)
-      if (code === 0) resolve()
-      else reject(new Error(stderr.trim().split('\n').pop() || `ffmpeg salió con código ${code}`))
-    })
+const request = async (path, clientId, options = {}) => {
+  const response = await fetch(new URL(path, BASE), {
+    ...options,
+    headers: { ...options.headers, cookie: `client_id=${clientId}` },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT)
   })
 
-const webpToPng = async buffer => {
-  const dir = await mkdtemp(join(tmpdir(), 'raphtalia-hd-'))
-
-  try {
-    const input = join(dir, 'in.webp')
-    const output = join(dir, 'out.png')
-    await writeFile(input, buffer)
-    await runFfmpeg(['-y', '-i', input, '-frames:v', '1', output])
-    return await readFile(output)
-  } finally {
-    await rm(dir, { recursive: true, force: true }).catch(() => {})
+  if (!response.ok) {
+    const detail = (await response.text().catch(() => '')).trim().slice(0, 120)
+    throw new Error(`el servicio respondió ${response.status}${detail ? `: ${detail}` : ''}`)
   }
+
+  return response
 }
 
-const parseJson = text => {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
+const enhance = async (image, format) => {
+  const clientId = newClientId()
+
+  const form = new FormData()
+  form.append('scale', String(SCALE))
+  form.append('model', MODEL)
+  if (FACE_ENHANCE) form.append('fx', '')
+  form.append('image', new Blob([image], { type: `image/${format}` }), `image.${format === 'jpeg' ? 'jpg' : format}`)
+
+  const upload = await request('/upscaling_upload', clientId, { method: 'POST', body: form })
+  const originalName = (await upload.text()).trim()
+
+  if (!originalName) throw new Error('el servicio no aceptó la imagen')
+
+  const deadline = Date.now() + MAX_WAIT
+
+  while (Date.now() < deadline) {
+    await sleep(POLL_INTERVAL)
+
+    const status = await request('/upscaling_get_status_v2', clientId)
+    const entries = await status.json().catch(() => [])
+    const entry = Array.isArray(entries) ? entries.find(item => item.original_filename === originalName) : null
+
+    if (!entry?.completed || !entry.image_url) continue
+
+    const url = new URL(entry.image_url, BASE)
+    if (url.origin !== BASE) throw new Error('origen de resultado no válido')
+    url.searchParams.set('delete_after_download', '')
+
+    const download = await request(url.pathname + url.search, clientId)
+    const output = Buffer.from(await download.arrayBuffer())
+
+    if (!detectFormat(output)) throw new Error('el servicio devolvió un archivo inválido')
+
+    return output
   }
-}
 
-const enhance = async image => {
-  const response = await fetch(API, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: '*/*', origin: ORIGIN, referer: `${ORIGIN}/`, 'user-agent': USER_AGENT },
-    body: JSON.stringify({ data: { image: image.toString('base64') } }),
-    signal: AbortSignal.timeout(API_TIMEOUT)
-  })
-
-  const body = parseJson(await response.text().catch(() => ''))
-
-  if (!response.ok) throw new Error(`la API respondió ${response.status}`)
-  if (typeof body?.result !== 'string' || body.result.length < 10) throw new Error('la API no devolvió resultado')
-
-  const inner = parseJson(body.result)
-  const encoded = inner?.image?.b64_json
-
-  if (typeof encoded !== 'string' || !encoded) throw new Error('la API devolvió una respuesta inválida')
-
-  const output = Buffer.from(encoded, 'base64')
-  const format = detectFormat(output)
-
-  if (!format) throw new Error('la API devolvió un formato inesperado')
-
-  return format === 'webp' ? webpToPng(output) : output
+  throw new Error('el servicio tardó demasiado')
 }
 
 export default {
@@ -136,15 +121,14 @@ export default {
 
     if (!image?.length) return ctx.reply(box('No se pudo completar', ['No pude descargar la imagen ✗']))
 
-    if (!detectFormat(image)) {
-      return ctx.reply(box('Formato no compatible', ['Usa una imagen JPG, PNG o WEBP ✗']))
-    }
+    const format = detectFormat(image)
+
+    if (!format) return ctx.reply(box('Formato no compatible', ['Usa una imagen JPG, PNG o WEBP ✗']))
 
     await mark(ctx, '🕒')
 
     try {
-      const result = await enhance(image)
-      await ctx.reply({ image: result })
+      await ctx.reply({ image: await enhance(image, format) })
       await mark(ctx, '✔️')
     } catch (error) {
       await mark(ctx, '✖️')
