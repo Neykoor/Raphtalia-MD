@@ -22,7 +22,7 @@ const ANIMATED_ATTEMPTS = [
   { quality: 30, fps: 10 },
   { quality: 20, fps: 8 }
 ]
-const FRAME = 'scale=512:512:force_original_aspect_ratio=decrease,format=rgba,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000'
+const FRAME = 'scale=512:512:force_original_aspect_ratio=increase,crop=512:512,format=rgba'
 
 const DOWNLOAD_TIMEOUT = 60000
 
