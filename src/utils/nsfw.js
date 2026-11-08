@@ -307,6 +307,7 @@ export const reactions = list => {
     name: 'reacciones',
     aliases: ['reactions18', ...first.aliases, ...rest.flatMap(item => [item.name, ...item.aliases]), first.name],
     description: 'Reacciones +18 entre usuarios (usa .reacciones para ver la lista)',
+    reactionNames: list.map(item => item.name),
     groupOnly: true,
     run: async ctx => {
       if (!(await guard(ctx))) return
@@ -402,4 +403,5 @@ export const random = ({ name, aliases = [], description, sources }) => ({
     await mark(ctx, '✔️')
   }
 })
+
   
