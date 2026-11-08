@@ -20,6 +20,11 @@ export const features = {
   nsfw: {
     label: 'Contenido +18 (NSFW)',
     aliases: ['nsfw', '+18', 'adulto', 'adultos']
+  },
+  economy: {
+    label: 'Comandos de economía',
+    aliases: ['economy', 'economia', 'economía', 'eco'],
+    defaultOn: true
   }
 }
 
@@ -42,11 +47,16 @@ const save = () => {
   renameSync(temp, file)
 }
 
-export const isEnabled = (chat, feature) => settings[chat]?.[feature] === true
+export const isEnabled = (chat, feature) => {
+  const value = settings[chat]?.[feature]
+  return value === undefined ? features[feature]?.defaultOn === true : value === true
+}
 
 export const setEnabled = (chat, feature, enabled) => {
-  if (enabled) {
-    settings[chat] = { ...settings[chat], [feature]: true }
+  const keep = enabled !== (features[feature]?.defaultOn === true)
+
+  if (keep) {
+    settings[chat] = { ...settings[chat], [feature]: enabled }
   } else if (settings[chat]) {
     delete settings[chat][feature]
     if (!Object.keys(settings[chat]).length) delete settings[chat]
