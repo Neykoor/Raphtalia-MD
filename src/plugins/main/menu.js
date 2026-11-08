@@ -49,12 +49,28 @@ const findImage = async () => {
   }
 }
 
+const MAX_ALIASES = 4
+
 const command = (plugin, prefix) => {
-  const aliases = (plugin.aliases ?? []).map(alias => ` ⟡ \`${prefix}${alias}\``).join('')
-  return `◈ \`${prefix}${plugin.name}\`${aliases}\n> _${plugin.description}_\n`
+  const aliases = (plugin.aliases ?? []).length > MAX_ALIASES ? [] : plugin.aliases ?? []
+  return `♡ \`${prefix}${plugin.name}\`${aliases.map(alias => ` ⟡ \`${prefix}${alias}\``).join('')}\n> _${plugin.description}_\n`
 }
 
-const category = (title, plugins, prefix) => `» ˚⟡•(✿)• ⊹ \`${title}\` ⊹\n${plugins.map(plugin => command(plugin, prefix)).join('')}\n`
+const chunk = (items, size) => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, index * size + size))
+
+const reactions = (plugin, prefix) =>
+  [
+    `❀ ꒰ \`Reacciones\` ꒱`,
+    `> _Uso: ${prefix}<reacción> @usuario o responder_`,
+    ...chunk(plugin.reactionNames, 3).map(row => `✿ ${row.map(name => `\`${prefix}${name}\``).join(' ⟡ ')}`),
+    ''
+  ].join('\n')
+
+const category = (title, plugins, prefix) => {
+  const single = plugins.filter(plugin => !plugin.reactionNames)
+  const grouped = plugins.filter(plugin => plugin.reactionNames)
+  return [`» ˚୨♡୧˚ \`${title}\` ˚୨♡୧˚`, ...single.map(plugin => command(plugin, prefix)), ...grouped.map(plugin => reactions(plugin, prefix)), ''].join('\n')
+}
 
 export default {
   name: 'menu',
@@ -79,18 +95,18 @@ export default {
     const group = ctx.isGroup ? await ctx.getGroup() : null
 
     const header = [
-      `✦ 𝐇𝐨𝐥𝐚, 𝐬𝐨𝐲 ${config.botName}`,
-      'ʟɪsᴛᴀ ᴅᴇ ᴄᴏᴍᴀɴᴅᴏs ᴅɪsᴘᴏɴɪʙʟᴇs',
-      '╭┈ ➤',
-      '│ ❀ 𝓓𝓮𝓿𝓮𝓵𝓸𝓹𝓮𝓭 𝓫𝔂 𝓝𝓮𝔂𝓴𝓸𝓸𝓻 ✦',
-      ...(group ? [`│ ❀ ꒷◈ 𝐆𝐫𝐮𝐩𝐨: ${group.subject ?? 'Grupo'}`, `│ ❀ ꒷◈ 𝐔𝐬𝐮𝐚𝐫𝐢𝐨𝐬: ${group.participants?.length ?? 1}`] : []),
-      '╰─────────────────',
+      `₊˚⊹ ♡ 𝐇𝐨𝐥𝐚, 𝐬𝐨𝐲 ${config.botName} ♡ ⊹˚₊`,
+      'ʟɪsᴛᴀ ᴅᴇ ᴄᴏᴍᴀɴᴅᴏs ᴅɪsᴘᴏɴɪʙʟᴇs ✿',
+      '╭┈ ✧ ꒰ ᵔᴗᵔ ꒱ ✧',
+      '│ ♡ 𝓓𝓮𝓿𝓮𝓵𝓸𝓹𝓮𝓭 𝓫𝔂 𝓝𝓮𝔂𝓴𝓸𝓸𝓻 ❀',
+      ...(group ? [`│ ♡ ꒷ 𝐆𝐫𝐮𝐩𝐨: ${group.subject ?? 'Grupo'}`, `│ ♡ ꒷ 𝐔𝐬𝐮𝐚𝐫𝐢𝐨𝐬: ${group.participants?.length ?? 1}`] : []),
+      '╰───────── ♡ ─────────',
       '',
       ''
     ].join('\n')
 
     const body = (selected ? [selected] : keys).map(key => category(labels[key] ?? key, groups.get(key), ctx.prefix)).join('')
-    const text = `${header}${body}━━━━━━━━━━━━━━━━━━━━━━━━━━`
+    const text = `${header}${body}₊˚⊹ ♡ ⊹˚₊`
     const image = await findImage()
 
     if (!image) return ctx.reply(text)
