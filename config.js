@@ -1,5 +1,6 @@
 export default {
   botName: 'Raphtalia-MD',
+  currency: 'Yenes',
   prefixes: ['.', '/', '!', '#'],
   owners: ['5210000000000'],
   sessionDir: 'session',
