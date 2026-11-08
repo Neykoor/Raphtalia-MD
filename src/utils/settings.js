@@ -16,6 +16,10 @@ export const features = {
     label: 'Antilink de grupos y canales',
     aliases: ['antilink', 'antilinks', 'antienlace', 'antienlaces'],
     needsAdmin: true
+  },
+  nsfw: {
+    label: 'Contenido +18 (NSFW)',
+    aliases: ['nsfw', '+18', 'adulto', 'adultos']
   }
 }
 
