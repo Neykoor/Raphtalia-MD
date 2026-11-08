@@ -1,58 +1,41 @@
 import config from '../../../config.js'
-import { duration, panel } from '../../utils/panel.js'
+import { duration } from '../../utils/panel.js'
 import { displayName, ensureUser, setField } from '../../utils/profiles.js'
+import { card, notifyOwners, socketType } from '../../utils/soft.js'
 
-const COOLDOWN_MS = 12 * 60 * 60 * 1000
-const MIN_LENGTH = 10
-const REPORTS = new Set(['report', 'reporte'])
+const COOLDOWN = 12 * 60 * 60 * 1000
+const MIN = 10
 
 export default {
   name: 'suggest',
   aliases: ['sug', 'report', 'reporte'],
   description: 'Envía una sugerencia o reporte a los dueños',
   run: async ctx => {
-    const isReport = REPORTS.has(ctx.command)
-    const noun = isReport ? 'reporte' : 'sugerencia'
-    const key = isReport ? 'reportCooldown' : 'sugCooldown'
+    const report = ['report', 'reporte'].includes(ctx.command)
+    const noun = report ? 'reporte' : 'sugerencia'
+    const key = report ? 'reportCooldown' : 'sugCooldown'
     const user = ensureUser(ctx.senderNumber, ctx.pushName)
-    const remaining = (user[key] || 0) - Date.now()
-
-    if (remaining > 0) {
-      return ctx.reply(panel('Espera un momento', [`Podrás enviar otro ${noun} en ${duration(remaining)} ✗`]))
-    }
-
+    const wait = (user[key] || 0) - Date.now()
     const text = ctx.text.trim()
 
-    if (!text) {
-      return ctx.reply(panel('Falta el mensaje', [`Ejemplo: ${ctx.prefix}${ctx.command} <tu ${noun}> ✿`]))
-    }
+    if (wait > 0) return ctx.reply(card('Espera un momento', [`Podrás enviar otro ${noun} en ${duration(wait)} ✗`]))
+    if (!text) return ctx.reply(card('Falta el mensaje', [`Ejemplo: ${ctx.prefix}${ctx.command} <tu ${noun}> ✿`]))
+    if (text.length < MIN) return ctx.reply(card('Mensaje muy corto', [`Explica mejor tu ${noun} (mínimo ${MIN} caracteres) ✗`]))
 
-    if (text.length < MIN_LENGTH) {
-      return ctx.reply(panel('Mensaje muy corto', [`Explica mejor tu ${noun} (mínimo ${MIN_LENGTH} caracteres) ✗`]))
-    }
+    const sent = await notifyOwners(
+      ctx.sock,
+      card(report ? 'Nuevo reporte' : 'Nueva sugerencia', [
+        ['Nombre', displayName(user, ctx.senderNumber)],
+        ['Número', `wa.me/${ctx.senderNumber}`],
+        ['Fecha', new Date().toLocaleString('es-MX', { timeZone: config.timezone, dateStyle: 'full', timeStyle: 'short' })],
+        ['Socket', socketType(ctx.sock)],
+        ['Mensaje', text]
+      ])
+    )
 
-    const message = panel(isReport ? 'Nuevo reporte' : 'Nueva sugerencia', [
-      ['Nombre', displayName(user, ctx.senderNumber)],
-      ['Número', `wa.me/${ctx.senderNumber}`],
-      ['Fecha', new Date().toLocaleString('es-MX', { timeZone: config.timezone, dateStyle: 'full', timeStyle: 'short' })],
-      ['Socket', ctx.sock.isJadibot ? 'Sub Bot' : 'Principal'],
-      ['Mensaje', text]
-    ])
+    if (!sent) return ctx.reply(card('No se pudo enviar', ['No pude contactar a los dueños ✗']))
 
-    let delivered = 0
-
-    for (const owner of config.owners) {
-      try {
-        await ctx.sock.sendMessage(`${owner}@s.whatsapp.net`, { text: message })
-        delivered += 1
-      } catch {}
-    }
-
-    if (!delivered) {
-      return ctx.reply(panel('No se pudo enviar', ['No pude contactar a los dueños en este momento ✗']))
-    }
-
-    setField(ctx.senderNumber, key, Date.now() + COOLDOWN_MS)
-    await ctx.reply(panel('Enviado', [`Gracias por tu ${noun} ♡`, 'Los dueños ya lo recibieron ✓']))
+    setField(ctx.senderNumber, key, Date.now() + COOLDOWN)
+    await ctx.reply(card('Enviado', [`Gracias por tu ${noun} ♡`, 'Los dueños ya lo recibieron ✓']))
   }
 }
