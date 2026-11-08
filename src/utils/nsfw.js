@@ -33,7 +33,7 @@ const shuffle = list => {
 
 const pick = value => (Array.isArray(value) ? value[Math.floor(Math.random() * value.length)] : value)
 
-const isBlocked = tag => BLOCKED_PREFIX.test(tag) || BLOCKED_WORD.test(tag) || BLOCKED_EXACT.has(tag)
+export const isBlocked = tag => BLOCKED_PREFIX.test(tag) || BLOCKED_WORD.test(tag) || BLOCKED_EXACT.has(tag)
 
 const hasBlockedTag = tags => String(tags || '').toLowerCase().split(/\s+/).some(isBlocked)
 
@@ -53,6 +53,18 @@ const getJson = async url => {
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
   return response.json()
 }
+
+const getText = async url => {
+  const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(API_TIMEOUT) })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.text()
+}
+
+const parseXml = xml =>
+  [...xml.matchAll(/<tag\s([^>]*?)\/?>/g)].map(([, attributes]) => {
+    const read = name => attributes.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1]?.replaceAll('&amp;', '&') ?? ''
+    return { file_url: read('file_url'), tags: read('tags') }
+  })
 
 const purrbot = async category => {
   const bases = ['https://purrbot.site/api/img/nsfw', 'https://api.purrbot.site/v2/img/nsfw']
@@ -78,6 +90,19 @@ const nekobot = async type => {
 }
 
 const sites = {
+  gelbooru: {
+    maxTags: 4,
+    list: data => data?.post,
+    url: tags =>
+      `https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1&limit=60&tags=${encodeURIComponent(`rating:explicit sort:random ${tags.join(' ')}`)}`,
+    parse: posts => posts.map(post => ({ url: post.file_url, tags: post.tags }))
+  },
+  paheal: {
+    maxTags: 3,
+    xml: true,
+    url: tags => `https://rule34.paheal.net/api/danbooru/find_posts?limit=100&tags=${encodeURIComponent(tags.join(' '))}`,
+    parse: posts => posts.map(post => ({ url: post.file_url, tags: post.tags }))
+  },
   danbooru: {
     maxTags: 1,
     url: tags =>
@@ -98,7 +123,7 @@ const sites = {
   }
 }
 
-export const booruSites = Object.keys(sites)
+export const booruSites = ['danbooru', 'yandere', 'konachan', 'gelbooru']
 
 const rank = items => {
   const valid = items.filter(item => {
@@ -119,8 +144,10 @@ const searchSites = async (tags, names) => {
   for (const name of shuffle(names)) {
     const site = sites[name]
     try {
-      const data = await getJson(site.url(tags.slice(0, site.maxTags)))
-      const urls = rank(site.parse(Array.isArray(data) ? data : []))
+      const url = site.url(tags.slice(0, site.maxTags))
+      const data = site.xml ? parseXml(await getText(url)) : await getJson(url)
+      const posts = site.list ? site.list(data) : data
+      const urls = rank(site.parse(Array.isArray(posts) ? posts : []))
       if (urls.length) return urls
     } catch (error) {
       log.warn(`nsfw ${name}: ${error.message}`)
@@ -375,3 +402,4 @@ export const random = ({ name, aliases = [], description, sources }) => ({
     await mark(ctx, '✔️')
   }
 })
+  
