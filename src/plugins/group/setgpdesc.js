@@ -6,7 +6,7 @@ const maxLength = 2048
 
 export default {
   name: 'setgpdesc',
-  aliases: ['setdesc', 'setgpdescription', 'setdescription'],
+  aliases: ['setgpdescription'],
   description: 'Cambia la descripción del grupo',
   groupOnly: true,
   adminOnly: true,
