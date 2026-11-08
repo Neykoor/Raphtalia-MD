@@ -1,12 +1,13 @@
 import os from 'node:os'
 import config from '../../../config.js'
 import { registry } from '../../core/loader.js'
-import { bytes, duration, panel } from '../../utils/panel.js'
+import { bytes, duration } from '../../utils/panel.js'
+import { card, socketType } from '../../utils/soft.js'
 
-const memory = () => {
+const ram = () => {
   const total = os.totalmem()
-  const constrained = process.constrainedMemory?.() || 0
-  const limit = Number.isFinite(constrained) && constrained > 0 && constrained < total ? constrained : total
+  const cap = process.constrainedMemory?.() || 0
+  const limit = cap > 0 && cap < total ? cap : total
   const used = process.memoryUsage().rss
   return `${bytes(used)} / ${bytes(limit)} (${((used / limit) * 100).toFixed(2)}%)`
 }
@@ -16,28 +17,26 @@ export default {
   aliases: ['botinfo'],
   description: 'Información del bot',
   run: async ctx => {
-    const started = new Date(Date.now() - process.uptime() * 1000).toLocaleString('es-MX', {
+    const owner = config.owners[0]
+    const since = new Date(Date.now() - process.uptime() * 1000).toLocaleString('es-MX', {
       timeZone: config.timezone,
       dateStyle: 'long',
       timeStyle: 'short'
     })
 
-    const owner = config.owners[0]
-
     await ctx.reply(
       [
-        panel(`Información de ${config.botName}`, [
-          ['Nombre', config.botName],
+        card(`Información de ${config.botName}`, [
           ['Prefijos', config.prefixes.join('  ')],
-          ['Tipo', ctx.sock.isJadibot ? 'Sub Bot' : 'Principal'],
+          ['Tipo', socketType(ctx.sock)],
           ['Comandos', registry.list.length],
           ['Dueño', owner ? `wa.me/${owner}` : 'Oculto']
         ]),
-        panel('Sistema', [
+        card('Sistema', [
           ['Plataforma', os.type()],
           ['NodeJS', process.version],
-          ['RAM', memory()],
-          ['Activo desde', started],
+          ['RAM', ram()],
+          ['Activo desde', since],
           ['Tiempo activo', duration(process.uptime() * 1000)],
           ['Sistema activo', duration(os.uptime() * 1000)]
         ])
