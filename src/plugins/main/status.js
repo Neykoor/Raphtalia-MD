@@ -1,15 +1,8 @@
 import os from 'node:os'
 import config from '../../../config.js'
-import { bytes, compact, duration, panel } from '../../utils/panel.js'
+import { bytes, compact, duration } from '../../utils/panel.js'
 import { allUsers } from '../../utils/profiles.js'
-
-const countGroups = async sock => {
-  try {
-    return Object.keys(await sock.groupFetchAllParticipating()).length
-  } catch {
-    return null
-  }
-}
+import { card } from '../../utils/soft.js'
 
 export default {
   name: 'status',
@@ -17,32 +10,27 @@ export default {
   description: 'Estado del bot y del servidor',
   run: async ctx => {
     const users = allUsers()
-    const commands = users.reduce((total, user) => total + (user.commands || 0), 0)
-    const groups = await countGroups(ctx.sock)
+    const groups = await ctx.sock.groupFetchAllParticipating().then(all => Object.keys(all).length, () => null)
     const usage = process.memoryUsage()
     const total = os.totalmem()
 
     await ctx.reply(
       [
-        panel(`Estado de ${config.botName}`, [
+        card(`Estado de ${config.botName}`, [
           ['Usuarios', users.length.toLocaleString()],
           ['Grupos', groups === null ? 'Desconocido' : groups.toLocaleString()],
-          ['Comandos ejecutados', compact(commands)],
+          ['Comandos', compact(users.reduce((sum, user) => sum + (user.commands || 0), 0))],
           ['Activo', duration(process.uptime() * 1000)]
         ]),
-        panel('Servidor', [
+        card('Servidor', [
           ['Sistema', os.type()],
           ['CPU', `${os.cpus().length} núcleos`],
-          ['RAM', bytes(total)],
-          ['RAM usada', bytes(total - os.freemem())],
+          ['RAM', `${bytes(total - os.freemem())} / ${bytes(total)}`],
           ['Arquitectura', os.arch()]
         ]),
-        panel('Memoria NodeJS', [
-          ['RAM utilizada', bytes(usage.rss)],
-          ['Heap reservado', bytes(usage.heapTotal)],
-          ['Heap usado', bytes(usage.heapUsed)],
-          ['Módulos nativos', bytes(usage.external)],
-          ['Buffers', bytes(usage.arrayBuffers)]
+        card('Memoria NodeJS', [
+          ['RAM', bytes(usage.rss)],
+          ['Heap', `${bytes(usage.heapUsed)} / ${bytes(usage.heapTotal)}`]
         ])
       ].join('\n\n')
     )
