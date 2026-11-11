@@ -6,6 +6,13 @@ export default {
   sessionDir: 'session',
   jadibotDir: 'session-jadibot',
   jadibotYieldToMain: true,
+  downloads: {
+    timeoutMs: 30000,
+    maxVideoMb: 50,
+    maxFileMb: 500,
+    siputzx: 'https://api.siputzx.my.id',
+    tikwm: 'https://www.tikwm.com'
+  },
   timezone: 'America/Bogota',
   loginMethod: 'ask',
   pairingNumber: '',
