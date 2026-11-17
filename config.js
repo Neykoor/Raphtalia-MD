@@ -2,7 +2,7 @@ export default {
   botName: 'Raphtalia-MD',
   currency: 'Yenes',
   prefixes: ['.', '/', '!', '#'],
-  owners: ['5210000000000'],
+  owners: ['5216631079388'],
   sessionDir: 'session',
   jadibotDir: 'session-jadibot',
   jadibotYieldToMain: true,
