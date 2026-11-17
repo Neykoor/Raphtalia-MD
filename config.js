@@ -10,8 +10,27 @@ export default {
     timeoutMs: 30000,
     maxVideoMb: 50,
     maxFileMb: 500,
+    providerTimeoutMs: 25000,
     siputzx: 'https://api.siputzx.my.id',
-    tikwm: 'https://www.tikwm.com'
+    tikwm: 'https://www.tikwm.com',
+    vreden: 'https://api.vreden.web.id',
+    ootaizumi: 'https://api.ootaizumi.web.id',
+    delirius: 'https://api.delirius.online',
+    zenzxz: 'https://api.zenzxz.my.id',
+    lempi: 'https://api.lempi.lat',
+    fare: 'https://fare.ink',
+    keys: {
+      lempi: 'montekey28',
+      anabot: 'freeApikey'
+    },
+    ytdl: {
+      url: '',
+      key: ''
+    },
+    ytdlp: {
+      path: 'yt-dlp',
+      extraArgs: ''
+    }
   },
   timezone: 'America/Bogota',
   loginMethod: 'ask',
