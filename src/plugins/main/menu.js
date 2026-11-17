@@ -105,6 +105,7 @@ export default {
       '╭┈ ✧ ꒰ ᵔᴗᵔ ꒱ ✧',
       '│ ♡ 𝓓𝓮𝓿𝓮𝓵𝓸𝓹𝓮𝓭 𝓫𝔂 𝓝𝓮𝔂𝓴𝓸𝓸𝓻 ❀',
       ...(group ? [`│ ♡ ꒷ 𝐆𝐫𝐮𝐩𝐨: ${group.subject ?? 'Grupo'}`, `│ ♡ ꒷ 𝐔𝐬𝐮𝐚𝐫𝐢𝐨𝐬: ${group.participants?.length ?? 1}`] : []),
+      ...(config.channelLink ? ['│ ♡ ꒷ 𝐂𝐚𝐧𝐚𝐥 𝐎𝐟𝐢𝐜𝐢𝐚𝐥 ✿', `│ ${config.channelLink}`] : []),
       '╰───────── ♡ ─────────',
       '',
       ''
