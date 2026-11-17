@@ -13,6 +13,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@vreden/youtube_scraper": "^1.2.9",
     "baileys": "npm:@neykoor/baileys@8.0.7-rc18",
     "btch-downloader": "latest",
     "pino": "^9.6.0",
