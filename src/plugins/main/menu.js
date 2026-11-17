@@ -12,6 +12,7 @@ const IMAGES = ['jpg', 'jpeg', 'png', 'webp']
 const labels = {
   perfil: 'Perfil',
   economy: 'Economía',
+  gacha: 'Gacha',
   group: 'Grupo',
   utils: 'Utilidades',
   nsfw: 'NSFW +18',
@@ -23,6 +24,7 @@ const labels = {
 const names = {
   perfil: ['perfil', 'profile'],
   economy: ['economia', 'economy', 'eco'],
+  gacha: ['gacha', 'harem', 'waifus', 'personajes'],
   group: ['grupo', 'group', 'grupos'],
   utils: ['utilidades', 'utils', 'herramientas'],
   nsfw: ['nsfw', '18', 'adulto'],
