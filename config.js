@@ -1,6 +1,7 @@
 export default {
   botName: 'Raphtalia-MD',
   currency: 'Yenes',
+  channelLink: 'https://whatsapp.com/channel/0029Vb9Rmzf23n3mht3Cz92J',
   prefixes: ['.', '/', '!', '#'],
   owners: ['5216631079388', '5214811571950'],
   sessionDir: 'session',
