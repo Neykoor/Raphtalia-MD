@@ -1,19 +1,22 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import config from '../../config.js'
 import { getUser as getProfile } from './profiles.js'
 
 const file = fileURLToPath(new URL('../../data/pokemon.json', import.meta.url))
 const saveDelayMs = 3000
 const API = 'https://pokeapi.co/api/v2'
 const API_TIMEOUT_MS = 8000
+const TRANSLATE_TIMEOUT_MS = 5000
 const MAX_POKEDEX_ID = 1025
+const READ_MORE = '‎'.repeat(4001)
 
 export const SUMMON_COOLDOWN_MS = 10 * 60 * 1000
 export const CATCH_WINDOW_MS = 45 * 1000
 export const PITY_LIMIT = 25
 export const MAX_LEVEL = 45
-export const CURRENCY = 'Velas'
+export const CURRENCY = config.currency || 'Yenes'
 
 const SPAWN_KEEP_MS = 10 * 60 * 1000
 const SECTIONS = ['users', 'spawns', 'owned', 'meta']
@@ -103,7 +106,7 @@ export const formatTime = ms => {
   return parts.join(' ')
 }
 
-export const money = amount => `${Math.floor(Number(amount) || 0).toLocaleString('en-US')} ${CURRENCY}`
+export const money = amount => `¥${Math.floor(Number(amount) || 0).toLocaleString('en-US')} ${CURRENCY}`
 
 export const displayName = id => String(getProfile(id)?.name || '').trim() || String(id)
 
@@ -135,6 +138,45 @@ const cleanText = text => String(text || '').replace(/[\n\f\r]+/g, ' ').replace(
 
 const capitalize = text => String(text || '').charAt(0).toUpperCase() + String(text || '').slice(1)
 
+const translators = [
+  async text => {
+    const response = await fetch(
+      `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=es&dt=t&q=${encodeURIComponent(text)}`,
+      { signal: AbortSignal.timeout(TRANSLATE_TIMEOUT_MS) }
+    )
+    if (!response.ok) throw new Error(`translate ${response.status}`)
+    const data = await response.json()
+    return (data?.[0] || []).map(part => part?.[0] || '').join('')
+  },
+  async text => {
+    const response = await fetch(
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|es`,
+      { signal: AbortSignal.timeout(TRANSLATE_TIMEOUT_MS) }
+    )
+    if (!response.ok) throw new Error(`translate ${response.status}`)
+    const data = await response.json()
+    if (Number(data?.responseStatus) !== 200) return ''
+    return data?.responseData?.translatedText || ''
+  }
+]
+
+const translateToSpanish = async text => {
+  for (const translate of translators) {
+    try {
+      const result = cleanText(await translate(text))
+      if (result) return result
+    } catch {
+      continue
+    }
+  }
+  return ''
+}
+
+const ensureFlavor = async species => {
+  if (!species.flavor && species.flavorEn) species.flavor = await translateToSpanish(species.flavorEn)
+  return species.flavor
+}
+
 const speciesRank = species => {
   if (species.mythical) return 5
   if (species.legendary) return 4
@@ -151,7 +193,6 @@ const getSpecies = async id => {
   const pick = lang => entries.filter(entry => entry.language?.name === lang).map(entry => cleanText(entry.flavor_text)).filter(Boolean)
   const spanish = pick('es')
   const english = pick('en')
-  const flavor = spanish.length ? spanish[spanish.length - 1] : english.length ? english[english.length - 1] : ''
   const nameEs = (data.names || []).find(entry => entry.language?.name === 'es')?.name
   const species = {
     id,
@@ -159,8 +200,8 @@ const getSpecies = async id => {
     captureRate: Number(data.capture_rate) || 255,
     legendary: Boolean(data.is_legendary),
     mythical: Boolean(data.is_mythical),
-    flavor,
-    flavorIsSpanish: spanish.length > 0
+    flavor: spanish.length ? spanish[spanish.length - 1] : '',
+    flavorEn: english.length ? english[english.length - 1] : ''
   }
   speciesCache.set(id, species)
   return species
@@ -222,7 +263,7 @@ const buildInstance = async (species, pokemon) => {
     quality,
     value,
     level: 0,
-    flavor: species.flavor,
+    flavor: species.flavor || (pokemon.types.length ? `${species.name} es un Pokémon de tipo ${pokemon.types.join(' y ')}.` : ''),
     image: pokemon.image
   }
 }
@@ -240,6 +281,7 @@ export const summon = async ({ chatId, userId }) => {
     if (!species) continue
     try {
       const pokemon = await getPokemon(species.id)
+      await ensureFlavor(species)
       instance = await buildInstance(species, pokemon)
     } catch {
       instance = null
@@ -287,17 +329,18 @@ export const spawnCaption = ({ spawn, count, mentionNumber, prefix }) =>
   `> Garantía de la noche » *${count}/${PITY_LIMIT}*\n\n` +
   `❖ ꒰ \`Secretos ocultos\` ꒱\n` +
   `✦ ID » #${spawn.id}\n` +
-  `✦ Nombre » *${spawn.name}*\n` +
-  `✦ Fuente » Pokémon\n` +
-  `✦ Tipo » ${spawn.types.join(' ⟡ ')}\n` +
-  `✦ Rareza » *${spawn.rarity}*\n` +
-  `✦ Valor » ${money(spawn.value)}\n\n` +
+  `❀ Nombre » *${spawn.name}*\n` +
+  `✾ Fuente » Pokémon\n` +
+  `❋ Tipo » ${spawn.types.join(' ⟡ ')}\n` +
+  `✪ Rareza » *${spawn.rarity}*\n` +
+  `✵ Valor » ${money(spawn.value)}${READ_MORE}\n\n` +
   (spawn.flavor ? `> _${spawn.flavor}_\n\n` : '') +
-  `❖ ꒰ \`Estadísticas\` ꒱\n` +
+  `❂ ꒰ \`Estadísticas\` ꒱\n` +
   `> *${spawn.name}* ⟡ _${spawn.rarity}_\n\n` +
-  `✧ Nivel » ${spawn.level}/${MAX_LEVEL}\n` +
-  `✧ Salud » ${spawn.stats.hp}\n` +
-  `✧ Daño » ${spawn.stats.attack}\n` +
-  `✧ Defensa » ${spawn.stats.defense}\n` +
-  `✧ Velocidad » ${spawn.stats.speed}\n` +
+  `✶ Nivel » ${spawn.level}/${MAX_LEVEL}\n` +
+  `❥ Salud » ${spawn.stats.hp}\n` +
+  `✷ Daño » ${spawn.stats.attack}\n` +
+  `❈ Defensa » ${spawn.stats.defense}\n` +
+  `➳ Velocidad » ${spawn.stats.speed}\n` +
   `✰ Calidad » *${spawn.quality}*`
+       
