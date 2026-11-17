@@ -32,6 +32,58 @@ export const RARITIES = [
 
 const EPIC_RANK = 3
 
+const SCENES = {
+  niebla: { appear: 'Salió de la niebla', vanish: 'se desvaneció en la niebla' },
+  bosque: { appear: 'Salió de entre los árboles del bosque', vanish: 'se perdió entre los árboles' },
+  pradera: { appear: 'Apareció en una pradera llena de flores', vanish: 'se escondió entre las flores' },
+  cueva: { appear: 'Salió de lo profundo de una cueva', vanish: 'se internó en la oscuridad de la cueva' },
+  lago: { appear: 'Emergió de las aguas de un lago', vanish: 'se sumergió en el lago' },
+  costa: { appear: 'Salió de entre las olas de la costa', vanish: 'se lo llevó la marea' },
+  volcan: { appear: 'Surgió entre las brasas de un volcán', vanish: 'se perdió entre el humo del volcán' },
+  tormenta: { appear: 'Apareció entre los relámpagos de una tormenta', vanish: 'se esfumó con la tormenta' },
+  ventisca: { appear: 'Salió de una ventisca helada', vanish: 'se perdió en la ventisca' },
+  desierto: { appear: 'Emergió de las dunas del desierto', vanish: 'se enterró bajo las dunas' },
+  montana: { appear: 'Bajó de lo alto de una montaña', vanish: 'trepó de vuelta a la montaña' },
+  pantano: { appear: 'Salió de un pantano burbujeante', vanish: 'se hundió en el pantano' },
+  cielo: { appear: 'Descendió desde las nubes', vanish: 'se elevó entre las nubes' },
+  cementerio: { appear: 'Se materializó entre las sombras de un cementerio', vanish: 'se disolvió entre las sombras' },
+  noche: { appear: 'Salió de las sombras bajo la luz de la luna', vanish: 'se fundió con la noche' },
+  ruinas: { appear: 'Despertó entre unas ruinas antiguas', vanish: 'se ocultó entre las ruinas' },
+  ciudad: { appear: 'Se asomó por un callejón de la ciudad', vanish: 'se escabulló por los callejones' }
+}
+
+const GENERAL_SCENES = ['niebla', 'bosque', 'pradera', 'cueva', 'ruinas', 'ciudad', 'noche', 'montana']
+
+const TYPE_SCENES = {
+  Normal: ['ciudad', 'pradera'],
+  Fuego: ['volcan'],
+  Agua: ['lago', 'costa'],
+  Eléctrico: ['tormenta'],
+  Planta: ['bosque', 'pradera'],
+  Hielo: ['ventisca'],
+  Lucha: ['montana'],
+  Veneno: ['pantano'],
+  Tierra: ['desierto', 'cueva'],
+  Volador: ['cielo'],
+  Psíquico: ['ruinas', 'noche'],
+  Bicho: ['bosque', 'pradera'],
+  Roca: ['cueva', 'montana'],
+  Fantasma: ['cementerio'],
+  Dragón: ['montana', 'cielo', 'tormenta'],
+  Siniestro: ['noche', 'ciudad'],
+  Acero: ['ciudad', 'montana'],
+  Hada: ['pradera', 'noche']
+}
+
+const COOLDOWN_LINES = [
+  'La niebla aún no se disipa.',
+  'Los Pokémon siguen escondidos.',
+  'Todo está en calma por ahora.',
+  'Las huellas todavía están frescas.',
+  'El ambiente está demasiado tranquilo.',
+  'Nada se mueve en los alrededores.'
+]
+
 const TYPES_ES = {
   normal: 'Normal',
   fire: 'Fuego',
@@ -124,6 +176,17 @@ export const checkSummonCooldown = id => {
 }
 
 const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min
+
+const randomItem = list => list[randomInt(0, list.length - 1)]
+
+export const sceneOf = key => SCENES[key] || SCENES.niebla
+
+export const cooldownLine = () => randomItem(COOLDOWN_LINES)
+
+const pickScene = types => {
+  const themed = types.flatMap(type => TYPE_SCENES[type] || [])
+  return randomItem(themed.length && Math.random() < 0.65 ? themed : GENERAL_SCENES)
+}
 
 const fetchJson = async path => {
   const response = await fetch(`${API}/${path}`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) })
@@ -263,6 +326,7 @@ const buildInstance = async (species, pokemon) => {
     quality,
     value,
     level: 0,
+    scene: pickScene(pokemon.types),
     flavor: species.flavor || (pokemon.types.length ? `${species.name} es un Pokémon de tipo ${pokemon.types.join(' y ')}.` : ''),
     image: pokemon.image
   }
@@ -314,7 +378,7 @@ export const catchSpawn = (spawnId, userId) => {
   const spawn = db.spawns[spawnId]
   if (!spawn || spawn.caught) return null
   spawn.caught = true
-  const { image, ...rest } = spawn
+  const { image, scene, ...rest } = spawn
   db.owned[spawn.id] = { ...rest, owner: userId, caughtAt: Date.now() }
   save()
   return db.owned[spawn.id]
@@ -324,7 +388,7 @@ export const getUserPokemon = userId => Object.values(load().owned).filter(entry
 
 export const spawnCaption = ({ spawn, count, mentionNumber, prefix }) =>
   `» ˚୨✿୧˚ \`POKÉMON\` ˚୨✿୧˚\n\n` +
-  `> Salió de la niebla para *@${mentionNumber}*\n` +
+  `> ${sceneOf(spawn.scene).appear} para *@${mentionNumber}*\n` +
   `> Solo tú puedes atraparlo con *${prefix}atrapar* en *${Math.round(CATCH_WINDOW_MS / 1000)}s*\n` +
   `> Garantía de la noche » *${count}/${PITY_LIMIT}*\n\n` +
   `❖ ꒰ \`Secretos ocultos\` ꒱\n` +
@@ -343,4 +407,3 @@ export const spawnCaption = ({ spawn, count, mentionNumber, prefix }) =>
   `❈ Defensa » ${spawn.stats.defense}\n` +
   `➳ Velocidad » ${spawn.stats.speed}\n` +
   `✰ Calidad » *${spawn.quality}*`
-       
