@@ -28,9 +28,9 @@ export default {
         `» ˚୨✿୧˚ \`ATRAPADO\` ˚୨✿୧˚\n\n` +
         `> *@${me}* atrapó a *${caught.name}* en *${elapsed}s*\n\n` +
         `✦ ID » #${caught.id}\n` +
-        `✦ Tipo » ${caught.types.join(' ⟡ ')}\n` +
-        `✦ Rareza » *${caught.rarity}*\n` +
-        `✦ Valor » ${pokemon.money(caught.value)}\n` +
+        `❋ Tipo » ${caught.types.join(' ⟡ ')}\n` +
+        `✪ Rareza » *${caught.rarity}*\n` +
+        `✵ Valor » ${pokemon.money(caught.value)}\n` +
         `✰ Calidad » *${caught.quality}*`,
       mentions: [ctx.sender]
     })
