@@ -1,0 +1,303 @@
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { getUser as getProfile } from './profiles.js'
+
+const file = fileURLToPath(new URL('../../data/pokemon.json', import.meta.url))
+const saveDelayMs = 3000
+const API = 'https://pokeapi.co/api/v2'
+const API_TIMEOUT_MS = 8000
+const MAX_POKEDEX_ID = 1025
+
+export const SUMMON_COOLDOWN_MS = 10 * 60 * 1000
+export const CATCH_WINDOW_MS = 45 * 1000
+export const PITY_LIMIT = 25
+export const MAX_LEVEL = 45
+export const CURRENCY = 'Velas'
+
+const SPAWN_KEEP_MS = 10 * 60 * 1000
+const SECTIONS = ['users', 'spawns', 'owned', 'meta']
+
+export const RARITIES = [
+  { key: 'common', label: 'Común', rank: 0, weight: 1, statMul: 1, valueMul: 14 },
+  { key: 'uncommon', label: 'Poco común', rank: 1, weight: 0.75, statMul: 1.1, valueMul: 20 },
+  { key: 'rare', label: 'Rara', rank: 2, weight: 0.45, statMul: 1.2, valueMul: 25 },
+  { key: 'epic', label: 'Épica', rank: 3, weight: 0.2, statMul: 1.35, valueMul: 34 },
+  { key: 'legendary', label: 'Legendaria', rank: 4, weight: 0.07, statMul: 1.5, valueMul: 48 },
+  { key: 'mythic', label: 'Mítica', rank: 5, weight: 0.04, statMul: 1.6, valueMul: 60 }
+]
+
+const EPIC_RANK = 3
+
+const TYPES_ES = {
+  normal: 'Normal',
+  fire: 'Fuego',
+  water: 'Agua',
+  electric: 'Eléctrico',
+  grass: 'Planta',
+  ice: 'Hielo',
+  fighting: 'Lucha',
+  poison: 'Veneno',
+  ground: 'Tierra',
+  flying: 'Volador',
+  psychic: 'Psíquico',
+  bug: 'Bicho',
+  rock: 'Roca',
+  ghost: 'Fantasma',
+  dragon: 'Dragón',
+  dark: 'Siniestro',
+  steel: 'Acero',
+  fairy: 'Hada'
+}
+
+let store = null
+let timer = null
+
+const load = () => {
+  if (store) return store
+  try {
+    store = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {}
+  } catch {
+    store = {}
+  }
+  if (!store || typeof store !== 'object') store = {}
+  for (const section of SECTIONS) {
+    if (!store[section] || typeof store[section] !== 'object') store[section] = {}
+  }
+  if (!Number.isFinite(store.meta.nextId)) store.meta.nextId = 1
+  return store
+}
+
+export const flush = () => {
+  clearTimeout(timer)
+  timer = null
+  try {
+    mkdirSync(dirname(file), { recursive: true })
+    const temp = `${file}.tmp`
+    writeFileSync(temp, JSON.stringify(load()))
+    renameSync(temp, file)
+  } catch (error) {
+    console.error('No se pudo guardar pokemon.json:', error.message)
+  }
+}
+
+const save = () => {
+  if (timer) return
+  timer = setTimeout(flush, saveDelayMs)
+  timer.unref?.()
+}
+
+process.on('exit', () => {
+  if (timer) flush()
+})
+
+export const formatTime = ms => {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  const parts = []
+  if (h) parts.push(`${h} hora${h !== 1 ? 's' : ''}`)
+  if (m) parts.push(`${m} minuto${m !== 1 ? 's' : ''}`)
+  if (s || !parts.length) parts.push(`${s} segundo${s !== 1 ? 's' : ''}`)
+  return parts.join(' ')
+}
+
+export const money = amount => `${Math.floor(Number(amount) || 0).toLocaleString('en-US')} ${CURRENCY}`
+
+export const displayName = id => String(getProfile(id)?.name || '').trim() || String(id)
+
+export const mentionJid = id => `${id}@s.whatsapp.net`
+
+const pokeUser = id => {
+  const { users } = load()
+  if (!users[id]) users[id] = { lastSummon: 0, pity: 0 }
+  return users[id]
+}
+
+export const checkSummonCooldown = id => {
+  const ms = pokeUser(id).lastSummon + SUMMON_COOLDOWN_MS - Date.now()
+  return { ready: ms <= 0, remainingMs: Math.max(ms, 0) }
+}
+
+const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min
+
+const fetchJson = async path => {
+  const response = await fetch(`${API}/${path}`, { signal: AbortSignal.timeout(API_TIMEOUT_MS) })
+  if (!response.ok) throw new Error(`PokéAPI ${response.status}`)
+  return response.json()
+}
+
+const speciesCache = new Map()
+const pokemonCache = new Map()
+
+const cleanText = text => String(text || '').replace(/[\n\f\r]+/g, ' ').replace(/\s+/g, ' ').trim()
+
+const capitalize = text => String(text || '').charAt(0).toUpperCase() + String(text || '').slice(1)
+
+const speciesRank = species => {
+  if (species.mythical) return 5
+  if (species.legendary) return 4
+  if (species.captureRate >= 200) return 0
+  if (species.captureRate >= 100) return 1
+  if (species.captureRate >= 45) return 2
+  return 3
+}
+
+const getSpecies = async id => {
+  if (speciesCache.has(id)) return speciesCache.get(id)
+  const data = await fetchJson(`pokemon-species/${id}`)
+  const entries = data.flavor_text_entries || []
+  const pick = lang => entries.filter(entry => entry.language?.name === lang).map(entry => cleanText(entry.flavor_text)).filter(Boolean)
+  const spanish = pick('es')
+  const english = pick('en')
+  const flavor = spanish.length ? spanish[spanish.length - 1] : english.length ? english[english.length - 1] : ''
+  const nameEs = (data.names || []).find(entry => entry.language?.name === 'es')?.name
+  const species = {
+    id,
+    name: nameEs || capitalize(data.name),
+    captureRate: Number(data.capture_rate) || 255,
+    legendary: Boolean(data.is_legendary),
+    mythical: Boolean(data.is_mythical),
+    flavor,
+    flavorIsSpanish: spanish.length > 0
+  }
+  speciesCache.set(id, species)
+  return species
+}
+
+const getPokemon = async id => {
+  if (pokemonCache.has(id)) return pokemonCache.get(id)
+  const data = await fetchJson(`pokemon/${id}`)
+  const stat = name => Number(data.stats?.find(entry => entry.stat?.name === name)?.base_stat) || 1
+  const pokemon = {
+    id,
+    types: (data.types || []).map(entry => TYPES_ES[entry.type?.name] || capitalize(entry.type?.name)),
+    stats: { hp: stat('hp'), attack: stat('attack'), defense: stat('defense'), speed: stat('speed') },
+    bst: (data.stats || []).reduce((sum, entry) => sum + (Number(entry.base_stat) || 0), 0),
+    image: data.sprites?.other?.['official-artwork']?.front_default || data.sprites?.front_default || null
+  }
+  pokemonCache.set(id, pokemon)
+  return pokemon
+}
+
+const pickSpecies = async minRank => {
+  let fallback = null
+  for (let attempt = 0; attempt < 14; attempt++) {
+    const id = randomInt(1, MAX_POKEDEX_ID)
+    let species
+    try {
+      species = await getSpecies(id)
+    } catch {
+      continue
+    }
+    const rank = speciesRank(species)
+    if (rank < minRank) continue
+    fallback = species
+    if (Math.random() <= RARITIES[rank].weight) return species
+  }
+  return fallback
+}
+
+const buildInstance = async (species, pokemon) => {
+  let rank = speciesRank(species)
+  if (rank < EPIC_RANK && pokemon.bst >= 600) rank = EPIC_RANK
+  const rarity = RARITIES[rank]
+  const scale = value => Math.round(value * rarity.statMul)
+  const stats = {
+    hp: scale(pokemon.stats.hp),
+    attack: scale(pokemon.stats.attack),
+    defense: scale(pokemon.stats.defense),
+    speed: scale(pokemon.stats.speed)
+  }
+  const quality = stats.hp + stats.attack + stats.defense + stats.speed
+  const value = Math.round((quality * rarity.valueMul * (0.9 + Math.random() * 0.2)) / 10) * 10
+  return {
+    pokedexId: species.id,
+    name: species.name,
+    types: pokemon.types,
+    rarity: rarity.label,
+    rarityRank: rank,
+    stats,
+    quality,
+    value,
+    level: 0,
+    flavor: species.flavor,
+    image: pokemon.image
+  }
+}
+
+export const summon = async ({ chatId, userId }) => {
+  const db = load()
+  const user = pokeUser(userId)
+  const count = user.pity + 1
+  const guaranteed = count >= PITY_LIMIT
+  const minRank = guaranteed ? EPIC_RANK : 0
+
+  let instance = null
+  for (let attempt = 0; attempt < 3 && !instance; attempt++) {
+    const species = await pickSpecies(minRank)
+    if (!species) continue
+    try {
+      const pokemon = await getPokemon(species.id)
+      instance = await buildInstance(species, pokemon)
+    } catch {
+      instance = null
+    }
+  }
+  if (!instance) return null
+
+  const now = Date.now()
+  for (const [key, spawn] of Object.entries(db.spawns)) {
+    if (now - spawn.expiresAt > SPAWN_KEEP_MS) delete db.spawns[key]
+  }
+
+  const id = db.meta.nextId++
+  db.spawns[id] = { ...instance, id, chatId, summoner: userId, createdAt: now, expiresAt: now + CATCH_WINDOW_MS, caught: false }
+  user.lastSummon = now
+  user.pity = guaranteed || instance.rarityRank >= EPIC_RANK ? 0 : count
+  save()
+
+  return { spawn: db.spawns[id], count, guaranteed }
+}
+
+export const getActiveSpawn = (chatId, userId) => {
+  const spawns = Object.values(load().spawns).filter(spawn => spawn.chatId === chatId && spawn.summoner === userId && !spawn.caught)
+  if (!spawns.length) return null
+  return spawns.sort((a, b) => b.createdAt - a.createdAt)[0]
+}
+
+export const catchSpawn = (spawnId, userId) => {
+  const db = load()
+  const spawn = db.spawns[spawnId]
+  if (!spawn || spawn.caught) return null
+  spawn.caught = true
+  const { image, ...rest } = spawn
+  db.owned[spawn.id] = { ...rest, owner: userId, caughtAt: Date.now() }
+  save()
+  return db.owned[spawn.id]
+}
+
+export const getUserPokemon = userId => Object.values(load().owned).filter(entry => entry.owner === userId)
+
+export const spawnCaption = ({ spawn, count, mentionNumber, prefix }) =>
+  `» ˚୨✿୧˚ \`POKÉMON\` ˚୨✿୧˚\n\n` +
+  `> Salió de la niebla para *@${mentionNumber}*\n` +
+  `> Solo tú puedes atraparlo con *${prefix}atrapar* en *${Math.round(CATCH_WINDOW_MS / 1000)}s*\n` +
+  `> Garantía de la noche » *${count}/${PITY_LIMIT}*\n\n` +
+  `❖ ꒰ \`Secretos ocultos\` ꒱\n` +
+  `✦ ID » #${spawn.id}\n` +
+  `✦ Nombre » *${spawn.name}*\n` +
+  `✦ Fuente » Pokémon\n` +
+  `✦ Tipo » ${spawn.types.join(' ⟡ ')}\n` +
+  `✦ Rareza » *${spawn.rarity}*\n` +
+  `✦ Valor » ${money(spawn.value)}\n\n` +
+  (spawn.flavor ? `> _${spawn.flavor}_\n\n` : '') +
+  `❖ ꒰ \`Estadísticas\` ꒱\n` +
+  `> *${spawn.name}* ⟡ _${spawn.rarity}_\n\n` +
+  `✧ Nivel » ${spawn.level}/${MAX_LEVEL}\n` +
+  `✧ Salud » ${spawn.stats.hp}\n` +
+  `✧ Daño » ${spawn.stats.attack}\n` +
+  `✧ Defensa » ${spawn.stats.defense}\n` +
+  `✧ Velocidad » ${spawn.stats.speed}\n` +
+  `✰ Calidad » *${spawn.quality}*`
