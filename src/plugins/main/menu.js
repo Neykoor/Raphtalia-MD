@@ -59,7 +59,7 @@ const MAX_ALIASES = 4
 
 const command = (plugin, prefix) => {
   const aliases = (plugin.aliases ?? []).length > MAX_ALIASES ? [] : plugin.aliases ?? []
-  return `♡ \`${prefix}${plugin.name}\`${aliases.map(alias => ` ⟡ \`${prefix}${alias}\``).join('')}\n> _${plugin.description}_\n`
+  return `♡ \`${prefix}${plugin.name}\`${aliases.map(alias => ` ⟡ \`${prefix}${alias}\``).join('')}\n> _${plugin.description}_`
 }
 
 const chunk = (items, size) => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, index * size + size))
@@ -68,14 +68,13 @@ const reactions = (plugin, prefix) =>
   [
     `❀ ꒰ \`Reacciones\` ꒱`,
     `> _Uso: ${prefix}<reacción> @usuario o responder_`,
-    ...chunk(plugin.reactionNames, 3).map(row => `✿ ${row.map(name => `\`${prefix}${name}\``).join(' ⟡ ')}`),
-    ''
+    ...chunk(plugin.reactionNames, 3).map(row => `✿ ${row.map(name => `\`${prefix}${name}\``).join(' ⟡ ')}`)
   ].join('\n')
 
 const category = (title, plugins, prefix) => {
   const single = plugins.filter(plugin => !plugin.reactionNames)
   const grouped = plugins.filter(plugin => plugin.reactionNames)
-  return [`» ˚୨♡୧˚ \`${title}\` ˚୨♡୧˚`, ...single.map(plugin => command(plugin, prefix)), ...grouped.map(plugin => reactions(plugin, prefix)), ''].join('\n')
+  return [`» ˚୨♡୧˚ \`${title}\` ˚୨♡୧˚`, ...single.map(plugin => command(plugin, prefix)), ...grouped.map(plugin => reactions(plugin, prefix)), '', ''].join('\n')
 }
 
 export default {
