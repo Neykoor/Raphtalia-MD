@@ -15,7 +15,7 @@ export default {
 
     if (now > spawn.expiresAt) {
       const late = ((now - spawn.expiresAt) / 1000).toFixed(1)
-      return ctx.reply(`✧ *${spawn.name}* se desvaneció en la niebla hace *${late}s*.`)
+      return ctx.reply(`✧ *${spawn.name}* ${pokemon.sceneOf(spawn.scene).vanish} hace *${late}s*.`)
     }
 
     const caught = pokemon.catchSpawn(spawn.id, me)
