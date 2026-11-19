@@ -33,6 +33,10 @@ export default {
       extraArgs: ''
     }
   },
+  nsfw: {
+    rule34: { userId: '', apiKey: '' },
+    gelbooru: { userId: '', apiKey: '' }
+  },
   timezone: 'America/Bogota',
   loginMethod: 'ask',
   pairingNumber: '',
