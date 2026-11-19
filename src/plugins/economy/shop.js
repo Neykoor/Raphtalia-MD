@@ -1,5 +1,6 @@
 import { currency, economyGate, getChatUser, setChatUser } from '../../utils/economy.js'
 import { getUser as getProfile } from '../../utils/profiles.js'
+import { TICKET_CHANCE, TICKET_MAX, TICKET_PRICE } from '../../utils/tickets.js'
 
 export default {
   name: 'shop',
@@ -10,7 +11,7 @@ export default {
     const { chat, senderNumber: me, args, prefix, command } = ctx
     const user = getChatUser(chat, me)
     const armas = [{ id: 'espada', name: 'Espada', price: 8000, durability: 100, description: 'Para aventura', tipo: 'Combate' }, { id: 'hacha', name: 'Hacha', price: 7500, durability: 100, description: 'Para mazmorra', tipo: 'Combate' }, { id: 'arco', name: 'Arco', price: 7000, durability: 100, description: 'Para cazar', tipo: 'Combate' }]
-    const herramientas = [{ id: 'pico', name: 'Pico', price: 6500, durability: 100, description: 'Para minar', tipo: 'Equipo' }, { id: 'caña', name: 'Caña de pescar', price: 6000, durability: 100, description: 'Para pescar', tipo: 'Equipo' }, { id: 'totem', name: 'Totem', price: 4000, durability: 3, description: 'Para ritual', tipo: 'Consumible' }, { id: 'pocion', name: 'Pocion', price: 1500, durability: 1, description: 'Restaura magia', tipo: 'Consumible' }]
+    const herramientas = [{ id: 'pico', name: 'Pico', price: 6500, durability: 100, description: 'Para minar', tipo: 'Equipo' }, { id: 'caña', name: 'Caña de pescar', price: 6000, durability: 100, description: 'Para pescar', tipo: 'Equipo' }, { id: 'totem', name: 'Totem', price: 4000, durability: 3, description: 'Para ritual', tipo: 'Consumible' }, { id: 'pocion', name: 'Pocion', price: 1500, durability: 1, description: 'Restaura magia', tipo: 'Consumible' }, { id: 'ticket', name: 'Ticket', price: TICKET_PRICE, durability: 1, description: `Atrapa un personaje con ${Math.round(TICKET_CHANCE * 100)}% de probabilidad`, tipo: 'Consumible' }]
     const commandType = command.toLowerCase()
     if (commandType === 'inventory' || commandType === 'inv' || commandType === 'inventario') {
       const userName = getProfile(me)?.name || 'Usuario'
@@ -44,7 +45,8 @@ export default {
       }
       const tieneTotem = (user.inventory?.totem || 0) > 0
       const tienePocion = (user.inventory?.pocion || 0) > 0
-      if (tieneTotem || tienePocion) {
+      const tieneTicket = (user.inventory?.ticket || 0) > 0
+      if (tieneTotem || tienePocion || tieneTicket) {
         hasItems = true
         invMessage += `\n\n𖣺 Consumibles`
         if (tieneTotem) {
@@ -52,6 +54,9 @@ export default {
         }
         if (tienePocion) {
           invMessage += `\n○ Pocion › *${user.inventory.pocion}*`
+        }
+        if (tieneTicket) {
+          invMessage += `\n○ Ticket › *${user.inventory.ticket}/${TICKET_MAX}*`
         }
       }
       if (!hasItems) {
@@ -64,7 +69,7 @@ export default {
       try {
         const armasDisponibles = armas.filter(item => !user.weapons?.[item.id])
         const herramientasDisponibles = herramientas.filter(item => {
-          if (item.id === 'totem' || item.id === 'pocion') {
+          if (item.id === 'totem' || item.id === 'pocion' || item.id === 'ticket') {
             return true
           }
           return !user.tools?.[item.id]
@@ -94,7 +99,9 @@ export default {
             }
           }
           let durabilidadText = ''
-          if (item.tipo === 'Consumible') {
+          if (item.id === 'ticket') {
+            durabilidadText = `ⴵ Máximo » *${TICKET_MAX}* (tienes *${user.inventory?.ticket || 0}*)`
+          } else if (item.tipo === 'Consumible') {
             durabilidadText = `ⴵ Usos » *${item.durability}*`
           } else {
             durabilidadText = `ⴵ Durabilidad » *${item.durability}*`
@@ -118,6 +125,7 @@ export default {
         const itemsAComprar = []
         const allItems = [...armas, ...herramientas]
         for (const item of allItems) {
+          if (item.id === 'ticket') continue
           const categoria = armas.some(a => a.id === item.id) ? 'arma' : 'herramienta'
           let puedeComprar = true
           if (categoria === 'arma') {
@@ -158,18 +166,27 @@ export default {
       const itemsToBuy = []
       const itemsNoEncontrados = []
       const itemsYaTiene = []
+      const itemsLimite = []
+      let ticketsPendientes = 0
       for (const itemInput of itemsInput) {
+        let name = itemInput
+        let qty = 1
+        const ticketMatch = itemInput.match(/^tickets?(?:\s+x?(\d+))?$/)
+        if (ticketMatch) {
+          name = 'ticket'
+          qty = ticketMatch[1] ? parseInt(ticketMatch[1]) : 1
+        }
         let item = null
         let categoria = null
-        item = armas.find(i => i.id === itemInput)
+        item = armas.find(i => i.id === name)
         if (item) categoria = 'arma'
         if (!item) {
-          item = herramientas.find(i => i.id === itemInput)
+          item = herramientas.find(i => i.id === name)
           if (item) categoria = 'herramienta'
         }
         if (!item) {
           const allItems = [...armas, ...herramientas]
-          const num = parseInt(itemInput)
+          const num = parseInt(name)
           if (num >= 1 && num <= allItems.length) {
             item = allItems[num - 1]
             categoria = armas.some(a => a.id === item.id) ? 'arma' : 'herramienta'
@@ -190,7 +207,15 @@ export default {
             continue
           }
         }
-        itemsToBuy.push({ item, categoria })
+        if (item.id === 'ticket') {
+          const actuales = (user.inventory?.ticket || 0) + ticketsPendientes
+          if (qty < 1 || actuales + qty > TICKET_MAX) {
+            itemsLimite.push(`Ticket (máximo ${TICKET_MAX}, tienes ${actuales})`)
+            continue
+          }
+          ticketsPendientes += qty
+        }
+        itemsToBuy.push({ item, categoria, qty })
       }
       if (itemsToBuy.length === 0) {
         let mensajeError = `ꕥ No se pudo comprar ningún item.`
@@ -200,22 +225,28 @@ export default {
         if (itemsYaTiene.length > 0) {
           mensajeError += `\n> Ya tienes: *${itemsYaTiene.join(', ')}*`
         }
+        if (itemsLimite.length > 0) {
+          mensajeError += `\n> Límite alcanzado: *${itemsLimite.join(', ')}*`
+        }
         return ctx.reply(mensajeError)
       }
       let costoTotal = 0
-      for (const { item } of itemsToBuy) {
-        costoTotal += item.price
+      for (const { item, qty } of itemsToBuy) {
+        costoTotal += item.price * qty
       }
       if ((user.coins || 0) < costoTotal) {
         return ctx.reply(`ꕥ No tienes suficientes ${currency}.\n⛁ Necesitas: *¥${costoTotal.toLocaleString()}*\n⛁ Tienes: *¥${(user.coins || 0).toLocaleString()}*`)
       }
       const itemsComprados = []
-      for (const { item, categoria } of itemsToBuy) {
+      for (const { item, categoria, qty } of itemsToBuy) {
         if (categoria === 'arma') {
           user.weapons[item.id] = { durability: item.durability, maxDurability: item.durability }
           itemsComprados.push(item.name)
         } else if (categoria === 'herramienta') {
-          if (item.id === 'totem' || item.id === 'pocion') {
+          if (item.id === 'ticket') {
+            user.inventory.ticket = (user.inventory.ticket || 0) + qty
+            itemsComprados.push(`${item.name} x${qty}`)
+          } else if (item.id === 'totem' || item.id === 'pocion') {
             user.inventory[item.id] = (user.inventory[item.id] || 0) + 1
             itemsComprados.push(item.name)
           } else {
@@ -231,7 +262,7 @@ export default {
       let mensajeFinal = `ꕥ Compra exitosa:\n`
       mensajeFinal += `> Items: *${itemsComprados.join(', ')}*\n`
       mensajeFinal += `> Total: *¥${costoTotal.toLocaleString()} ${currency}*`
-      if (itemsNoEncontrados.length > 0 || itemsYaTiene.length > 0) {
+      if (itemsNoEncontrados.length > 0 || itemsYaTiene.length > 0 || itemsLimite.length > 0) {
         mensajeFinal += `\n\n> Notas:`
         if (itemsNoEncontrados.length > 0) {
           mensajeFinal += `\n> • Items no encontrados: *${itemsNoEncontrados.join(', ')}*`
@@ -239,8 +270,11 @@ export default {
         if (itemsYaTiene.length > 0) {
           mensajeFinal += `\n> • Ya tienes: *${itemsYaTiene.join(', ')}*`
         }
+        if (itemsLimite.length > 0) {
+          mensajeFinal += `\n> • Límite alcanzado: *${itemsLimite.join(', ')}*`
+        }
       }
       return ctx.reply(mensajeFinal)
     }
   }
-}
+      }
