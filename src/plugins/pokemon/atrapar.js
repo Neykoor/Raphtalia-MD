@@ -2,7 +2,7 @@ import * as pokemon from '../../utils/pokemon.js'
 
 export default {
   name: 'atrapar',
-  aliases: ['catch', 'pokeatrapar'],
+  aliases: ['pokeatrapar'],
   description: 'Atrapa el Pokémon que invocaste antes de que se desvanezca.',
   run: async ctx => {
     const me = ctx.senderNumber
