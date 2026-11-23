@@ -6,10 +6,10 @@ import {
   DisconnectReason,
   jidNormalizedUser,
   makeCacheableSignalKeyStore,
-  makeResilientSocket,
-  useMultiFileAuthState
+  makeResilientSocket
 } from 'baileys'
 import config from '../../config.js'
+import { useSafeAuthState } from '../utils/auth.js'
 import { subs } from '../utils/bots.js'
 import { makeCache, mediaCache } from '../utils/cache.js'
 import { bindGroupCache, groupCache } from '../utils/groups.js'
@@ -21,6 +21,8 @@ const maxDelayMs = 60000
 const retryAfterStopMs = 60000
 const pairingTimeoutMs = 180000
 const pairingDelayMs = 3000
+const maxLogoutStrikes = 4
+const logoutRetryMs = 20000
 
 const sessionPath = number => join(config.jadibotDir, number)
 
@@ -68,7 +70,7 @@ const welcome = sock => {
 }
 
 const open = async (sub, hooks) => {
-  const { state, saveCreds } = await useMultiFileAuthState(sessionPath(sub.number))
+  const { state, saveCreds } = await useSafeAuthState(sessionPath(sub.number))
   const isLinked = () => Boolean(state.creds.registered || state.creds.me)
   const linked = isLinked()
   sub.fresh ??= !linked
@@ -83,7 +85,8 @@ const open = async (sub, hooks) => {
     logger: silent,
     browser: Browsers.windows('Chrome'),
     markOnlineOnConnect: false,
-    keepAliveIntervalMs: 20000,
+    keepAliveIntervalMs: 25000,
+    connectTimeoutMs: 60000,
     retryRequestDelayMs: 250,
     syncFullHistory: false,
     mediaCache,
@@ -100,6 +103,20 @@ const open = async (sub, hooks) => {
 
   const giveUp = status => {
     if (sub.stopped) return
+
+    if (status === DisconnectReason.loggedOut && isLinked()) {
+      sub.strikes = (sub.strikes ?? 0) + 1
+
+      if (sub.strikes < maxLogoutStrikes) {
+        const delay = logoutRetryMs * sub.strikes
+        log.warn(`Jadibot ${sub.number} recibió cierre de sesión (${status}), intento ${sub.strikes}/${maxLogoutStrikes - 1} de recuperarlo en ${delay / 1000}s`)
+        sub.online = false
+        clearTimeout(sub.timer)
+        stopSocket(sub)
+        schedule(sub, hooks, delay)
+        return
+      }
+    }
 
     if (status === DisconnectReason.loggedOut || !isLinked()) {
       log.warn(`Jadibot ${sub.number} desvinculado (${status ?? 'desconocido'}), sesión eliminada`)
@@ -146,6 +163,7 @@ const open = async (sub, hooks) => {
       if (connection === 'open') {
         clearTimeout(sub.pairTimer)
         sub.online = true
+        sub.strikes = 0
         openedAt = Date.now()
         log.success(`Jadibot ${sub.number} conectado como ${sock.user?.name || sock.user?.id}`)
         if (sub.fresh) {
