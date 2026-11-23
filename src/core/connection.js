@@ -3,14 +3,15 @@ import {
   Browsers,
   DisconnectReason,
   makeCacheableSignalKeyStore,
-  makeResilientSocket,
-  useMultiFileAuthState
+  makeResilientSocket
 } from 'baileys'
 import config from '../../config.js'
+import { useSafeAuthState } from '../utils/auth.js'
 import { main } from '../utils/bots.js'
 import { makeCache, mediaCache } from '../utils/cache.js'
 import { bindGroupCache, groupCache } from '../utils/groups.js'
 import log, { silent } from '../utils/logger.js'
+import { acquireLock } from '../utils/lock.js'
 import { ask } from '../utils/prompt.js'
 import { bindWelcome } from '../utils/welcome.js'
 import { handleMessage } from './handler.js'
@@ -21,6 +22,11 @@ const messageCache = makeCache(config.messageCacheSize, config.messageCacheTtlMs
 const maxReconnectDelayMs = 60000
 const retryAfterStopMs = 60000
 const maxPairingTries = 3
+const maxLogoutStrikes = 4
+const logoutRetryMs = 20000
+const replacedRetryMs = 30000
+
+let logoutStrikes = 0
 
 let loginChoice = null
 let pluginsReady = false
@@ -75,28 +81,37 @@ const stopResilient = () => {
   resilient = null
 }
 
-const retryLater = () => {
+const retryLater = (delay = retryAfterStopMs) => {
   setTimeout(() => {
     connect().catch(error => {
       log.error('Error al reconectar:', error?.message ?? error)
       retryLater()
     })
-  }, retryAfterStopMs)
+  }, delay)
 }
 
 const giveUp = status => {
   stopResilient()
 
   if (status === DisconnectReason.loggedOut) {
+    logoutStrikes += 1
+
+    if (logoutStrikes < maxLogoutStrikes) {
+      const delay = logoutRetryMs * logoutStrikes
+      log.warn(`WhatsApp devolvió cierre de sesión (${status}), intento ${logoutStrikes}/${maxLogoutStrikes - 1} de recuperarla en ${delay / 1000}s. La sesión no se borró`)
+      retryLater(delay)
+      return
+    }
+
     log.error(
-      `WhatsApp cerró la sesión (${status}). La carpeta "${config.sessionDir}" NO se borró. Si desvinculaste el bot desde el teléfono, bórrala y vuelve a iniciar para vincular de nuevo`
+      `WhatsApp cerró la sesión (${status}) ${logoutStrikes} veces seguidas. La carpeta "${config.sessionDir}" NO se borró. Si realmente fue desvinculado, bórrala y vuelve a iniciar para vincular de nuevo`
     )
     return
   }
 
   if (status === DisconnectReason.connectionReplaced) {
-    log.error('La sesión fue abierta en otro lugar. Cierra la otra instancia y vuelve a iniciar')
-    process.exit(1)
+    log.error(`La sesión fue abierta en otro lugar. Se reintentará en ${replacedRetryMs / 1000}s`)
+    retryLater(replacedRetryMs)
     return
   }
 
@@ -105,7 +120,7 @@ const giveUp = status => {
 }
 
 const connect = async () => {
-  const { state, saveCreds } = await useMultiFileAuthState(config.sessionDir)
+  const { state, saveCreds } = await useSafeAuthState(config.sessionDir)
   const login = await resolveLogin(Boolean(state.creds.registered || state.creds.me))
   const pairing = { requested: false, tries: 0 }
   let openedAt = 0
@@ -118,7 +133,8 @@ const connect = async () => {
     logger: silent,
     browser: Browsers.windows('Chrome'),
     markOnlineOnConnect: false,
-    keepAliveIntervalMs: 20000,
+    keepAliveIntervalMs: 25000,
+    connectTimeoutMs: 60000,
     retryRequestDelayMs: 250,
     syncFullHistory: false,
     mediaCache,
@@ -163,6 +179,7 @@ const connect = async () => {
 
       if (connection === 'open') {
         openedAt = Date.now()
+        logoutStrikes = 0
         log.success(`${config.botName} conectado como ${sock.user?.name || sock.user?.id}`)
       }
 
@@ -199,5 +216,10 @@ export const start = async () => {
     pluginsReady = true
   }
 
+  if (!(await acquireLock(config.sessionDir))) {
+    log.error('Hay otra instancia del bot usando la misma sesión. Ciérrala antes de iniciar')
+    process.exit(1)
+  }
+
   await connect()
-}
+      }
