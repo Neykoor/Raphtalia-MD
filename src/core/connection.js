@@ -31,6 +31,7 @@ let logoutStrikes = 0
 let loginChoice = null
 let pluginsReady = false
 let resilient = null
+let hooks = {}
 
 const resolveLogin = async registered => {
   if (registered) return null
@@ -121,9 +122,12 @@ const giveUp = status => {
 
 const connect = async () => {
   const { state, saveCreds } = await useSafeAuthState(config.sessionDir)
-  const login = await resolveLogin(Boolean(state.creds.registered || state.creds.me))
+  const registered = Boolean(state.creds.registered || state.creds.me)
+  const login = await resolveLogin(registered)
   const pairing = { requested: false, tries: 0 }
   let openedAt = 0
+
+  if (registered) hooks.onRegistered?.()
 
   const socketConfig = {
     auth: {
@@ -131,11 +135,8 @@ const connect = async () => {
       keys: makeCacheableSignalKeyStore(state.keys, silent)
     },
     logger: silent,
-    browser: Browsers.windows('Chrome'),
+    browser: login?.method === 'code' ? Browsers.ubuntu('Chrome') : Browsers.macOS('Safari'),
     markOnlineOnConnect: false,
-    keepAliveIntervalMs: 25000,
-    connectTimeoutMs: 60000,
-    retryRequestDelayMs: 250,
     syncFullHistory: false,
     mediaCache,
     shouldIgnoreJid: jid => jid === 'status@broadcast' || jid?.endsWith('@newsletter'),
@@ -181,6 +182,7 @@ const connect = async () => {
         openedAt = Date.now()
         logoutStrikes = 0
         log.success(`${config.botName} conectado como ${sock.user?.name || sock.user?.id}`)
+        hooks.onOpen?.()
       }
 
       if (connection === 'close') {
@@ -209,7 +211,9 @@ const connect = async () => {
   })
 }
 
-export const start = async () => {
+export const start = async (options = {}) => {
+  hooks = options
+
   if (!pluginsReady) {
     const result = await loadPlugins()
     log.success(`Plugins cargados: ${result.commands} comandos en ${result.files} archivos`)
@@ -222,4 +226,4 @@ export const start = async () => {
   }
 
   await connect()
-      }
+}
