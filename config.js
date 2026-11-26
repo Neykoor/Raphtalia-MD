@@ -1,11 +1,19 @@
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const root = fileURLToPath(new URL('.', import.meta.url))
+
 export default {
   botName: 'Raphtalia-MD',
   currency: 'Yenes',
   channelLink: 'https://whatsapp.com/channel/0029Vb9Rmzf23n3mht3Cz92J',
   prefixes: ['.', '/', '!', '#'],
   owners: ['5216631079388', '5214811571950'],
-  sessionDir: 'session',
-  jadibotDir: 'session-jadibot',
+  sessionDir: join(root, 'session'),
+  jadibotDir: join(root, 'session-jadibot'),
+  jadibotBootDelayMs: 10000,
+  jadibotBootGapMs: 2500,
+  jadibotCodeCooldownMs: 80000,
   jadibotYieldToMain: true,
   downloads: {
     timeoutMs: 30000,
