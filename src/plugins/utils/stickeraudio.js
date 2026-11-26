@@ -1,13 +1,14 @@
 import { downloadMediaMessage } from 'baileys'
 import config from '../../../config.js'
 import log, { silent } from '../../utils/logger.js'
+import { sendAudioSticker } from '../../utils/audiosticker.js'
 import { getStickerInfo } from '../../utils/stickerinfo.js'
 import {
   addExif,
   buildExif,
   DOWNLOAD_TIMEOUT,
   encodeSticker,
-  extractAudio,
+  extractVoice,
   MAX_INPUT,
   MAX_NAME,
   MAX_SECONDS,
@@ -35,7 +36,7 @@ const pickSource = ctx => {
 export default {
   name: 'stickeraudio',
   aliases: ['sa', 'saudio', 'stickerconaudio'],
-  description: 'Crea un sticker animado desde un video y te envía también su audio',
+  description: 'Crea un sticker animado con el audio del video incluido en el mismo mensaje',
   run: async ctx => {
     const picked = pickSource(ctx)
 
@@ -43,7 +44,7 @@ export default {
       return ctx.reply(
         box('Falta un video', [
           'Envía un video con el comando o responde a uno ✿',
-          `Recibirás el sticker animado y su audio (hasta ${MAX_SECONDS} s) ❀`,
+          `Recibirás un solo sticker animado con su audio (hasta ${MAX_SECONDS} s) ❀`,
           `Ejemplo: ${ctx.prefix}${ctx.command} Paquete | Autor ✧`,
           `Guarda tus datos con ${ctx.prefix}setsticker Paquete | Autor ♡`
         ])
@@ -78,11 +79,10 @@ export default {
       }
 
       const input = { buffer, extension: 'mp4' }
-      const audio = await extractAudio(input)
+      const voice = await extractVoice(input)
       const webp = await encodeSticker(input, true)
 
-      await ctx.reply({ sticker: addExif(webp, buildExif(pack, author)) })
-      await ctx.reply({ audio, mimetype: 'audio/mp4', ptt: false })
+      await sendAudioSticker(ctx.sock, ctx.chat, addExif(webp, buildExif(pack, author)), true, voice)
       await mark(ctx, '✔️')
       log.success('Sticker con audio: enviado')
     } catch (error) {
