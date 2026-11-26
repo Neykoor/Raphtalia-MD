@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import * as baileys from 'baileys'
 import {
   Browsers,
   DisconnectReason,
@@ -10,9 +11,10 @@ import {
 } from 'baileys'
 import config from '../../config.js'
 import { useSafeAuthState } from '../utils/auth.js'
-import { subs } from '../utils/bots.js'
+import { main, subs } from '../utils/bots.js'
 import { makeCache, mediaCache } from '../utils/cache.js'
 import { bindGroupCache, groupCache } from '../utils/groups.js'
+import { jidNumber } from '../utils/jid.js'
 import log, { silent } from '../utils/logger.js'
 import { bindWelcome } from '../utils/welcome.js'
 import { handleMessage } from './handler.js'
@@ -20,11 +22,35 @@ import { handleMessage } from './handler.js'
 const maxDelayMs = 60000
 const retryAfterStopMs = 60000
 const pairingTimeoutMs = 180000
-const pairingDelayMs = 3000
+const maxPairingTries = 3
 const maxLogoutStrikes = 4
 const logoutRetryMs = 20000
 
 const sessionPath = number => join(config.jadibotDir, number)
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+const isRateLimited = error => typeof baileys.isRateLimitError === 'function' && baileys.isRateLimitError(error)
+
+const readLinked = async number => {
+  for (const name of ['creds.json', 'creds.json.bak']) {
+    let raw
+
+    try {
+      raw = await readFile(join(sessionPath(number), name), 'utf8')
+    } catch (error) {
+      if (error?.code === 'ENOENT') continue
+      throw error
+    }
+
+    try {
+      const creds = JSON.parse(raw)
+      return Boolean(creds?.registered || creds?.me)
+    } catch {}
+  }
+
+  return null
+}
 
 const stopSocket = sub => {
   try {
@@ -83,11 +109,8 @@ const open = async (sub, hooks) => {
       keys: makeCacheableSignalKeyStore(state.keys, silent)
     },
     logger: silent,
-    browser: Browsers.windows('Chrome'),
+    browser: Browsers.ubuntu('Chrome'),
     markOnlineOnConnect: false,
-    keepAliveIntervalMs: 25000,
-    connectTimeoutMs: 60000,
-    retryRequestDelayMs: 250,
     syncFullHistory: false,
     mediaCache,
     shouldIgnoreJid: jid => jid === 'status@broadcast' || jid?.endsWith('@newsletter'),
@@ -95,11 +118,53 @@ const open = async (sub, hooks) => {
     getMessage: async key => messageCache.get(key.id)
   }
 
+  const pairing = { requested: false, tries: 0 }
   let openedAt = 0
-  let firstSocket
-  const ready = new Promise(resolve => {
-    firstSocket = resolve
-  })
+
+  const requestCode = async sock => {
+    if (pairing.requested || sub.stopped || !hooks.onCode) return
+    pairing.requested = true
+
+    try {
+      const code = await sock.requestPairingCode(sub.number)
+      if (sub.stopped) return
+
+      clearTimeout(sub.pairTimer)
+      sub.pairTimer = setTimeout(async () => {
+        if (sub.stopped || sub.online) return
+        await drop(sub)
+        hooks.onFail?.('timeout')
+      }, pairingTimeoutMs)
+
+      await hooks.onCode(code.match(/.{1,4}/g).join('-'))
+    } catch (error) {
+      pairing.requested = false
+      pairing.tries += 1
+      log.error(`No se pudo generar el código del jadibot ${sub.number}:`, error?.message ?? error)
+
+      if (isRateLimited(error) || pairing.tries >= maxPairingTries) {
+        const reason = isRateLimited(error) ? 'ratelimit' : 'error'
+        await drop(sub)
+        hooks.onFail?.(reason)
+      }
+    }
+  }
+
+  const reject = async (sock, reason) => {
+    const fresh = sub.fresh
+    sub.stopped = true
+
+    if (fresh) {
+      try {
+        await sock.logout()
+      } catch {}
+    }
+
+    if (fresh) await drop(sub)
+    else release(sub)
+
+    hooks.onFail?.(reason)
+  }
 
   const giveUp = status => {
     if (sub.stopped) return
@@ -157,10 +222,30 @@ const open = async (sub, hooks) => {
       }
     })
 
-    sock.ev.on('connection.update', async ({ connection, lastDisconnect }) => {
+    sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
       if (sub.stopped || sub.sock !== sock) return
 
+      if (qr && !isLinked()) await requestCode(sock)
+
       if (connection === 'open') {
+        const account = jidNumber(sock.user?.id)
+        const mainAccount = jidNumber(main.sock?.user?.id)
+        const duplicate = [...subs.values()].some(
+          other => other !== sub && other.sock?.user && jidNumber(other.sock.user.id) === account
+        )
+
+        if (account && account === mainAccount) {
+          log.warn(`Jadibot ${sub.number} corresponde a la cuenta del bot principal, se descarta`)
+          await reject(sock, 'main')
+          return
+        }
+
+        if (account && duplicate) {
+          log.warn(`Jadibot ${sub.number} corresponde a una cuenta que ya tiene un sub-bot activo, se descarta`)
+          await reject(sock, 'duplicate')
+          return
+        }
+
         clearTimeout(sub.pairTimer)
         sub.online = true
         sub.strikes = 0
@@ -183,8 +268,6 @@ const open = async (sub, hooks) => {
         log.warn(`Jadibot ${sub.number} desconectado (${status ?? 'desconocido'})${alive}`)
       }
     })
-
-    firstSocket(sock)
   }
 
   sub.resilient = makeResilientSocket({
@@ -197,19 +280,6 @@ const open = async (sub, hooks) => {
     onStopped: giveUp,
     onMaxAttemptsReached: () => giveUp(undefined)
   })
-
-  if (!linked && hooks.onCode) {
-    const sock = await ready
-    await new Promise(resolve => setTimeout(resolve, pairingDelayMs))
-    if (sub.stopped) return
-    const code = await sock.requestPairingCode(sub.number)
-    sub.pairTimer = setTimeout(async () => {
-      if (sub.stopped || sub.online) return
-      await drop(sub)
-      hooks.onFail?.()
-    }, pairingTimeoutMs)
-    await hooks.onCode(code.match(/.{1,4}/g).join('-'))
-  }
 }
 
 export const startJadibot = async (number, hooks = {}) => {
@@ -247,27 +317,29 @@ export const restoreJadibots = async () => {
   try {
     if (!existsSync(config.jadibotDir)) return
 
-    const numbers = readdirSync(config.jadibotDir).filter(name => statSync(join(config.jadibotDir, name)).isDirectory())
+    const numbers = readdirSync(config.jadibotDir).filter(
+      name => /^\d{8,15}$/.test(name) && statSync(join(config.jadibotDir, name)).isDirectory()
+    )
     let restored = 0
 
     for (const number of numbers) {
-      if (!existsSync(join(sessionPath(number), 'creds.json'))) {
-        await rm(sessionPath(number), { recursive: true, force: true })
-        continue
-      }
-
       try {
+        if (!(await readLinked(number))) {
+          await rm(sessionPath(number), { recursive: true, force: true })
+          continue
+        }
+
         await startJadibot(number)
         restored += 1
       } catch (error) {
         log.error(`No se pudo restaurar el jadibot ${number}:`, error?.message ?? error)
       }
 
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      await sleep(config.jadibotBootGapMs)
     }
 
     if (restored) log.success(`Jadibots restaurados: ${restored}`)
   } catch (error) {
     log.error('No se pudieron restaurar los jadibots:', error?.message ?? error)
   }
-}
+                                                                  }
