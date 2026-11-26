@@ -1,6 +1,16 @@
+import config from '../../../config.js'
 import { isJadibotActive, startJadibot } from '../../core/jadibot.js'
 import { isLidJid, jidNumber } from '../../utils/jid.js'
 import log from '../../utils/logger.js'
+
+const cooldowns = new Map()
+
+const failMessages = {
+  ratelimit: 'WhatsApp limitó los códigos de vinculación. Espera unos minutos e inténtalo de nuevo.',
+  main: 'Ese número es el del bot principal, no puede ser un sub-bot.',
+  duplicate: 'Esa cuenta ya tiene un sub-bot activo.',
+  error: 'No pude generar el código. Intenta de nuevo en unos segundos.'
+}
 
 export default {
   name: 'jadibot',
@@ -23,6 +33,15 @@ export default {
       return ctx.reply(`Ese número ya tiene un sub-bot. Usa ${ctx.prefix}stopjadibot para quitarlo.`)
     }
 
+    const left = (cooldowns.get(number) ?? 0) + config.jadibotCodeCooldownMs - Date.now()
+
+    if (left > 0 && !ctx.isOwner) {
+      return ctx.reply(`Espera ${Math.ceil(left / 1000)}s antes de pedir otro código.`)
+    }
+
+    cooldowns.set(number, Date.now())
+    if (cooldowns.size > 500) cooldowns.delete(cooldowns.keys().next().value)
+
     await ctx.reply('Generando tu código de emparejamiento...')
 
     try {
@@ -40,8 +59,10 @@ export default {
           await ctx.send(code)
         },
         onLinked: () => ctx.reply('Sub-bot vinculado y conectado correctamente ✓').catch(() => {}),
-        onFail: () => {
-          ctx.reply(`No se completó la vinculación. Usa ${ctx.prefix}${ctx.command} de nuevo para pedir otro código.`).catch(() => {})
+        onFail: reason => {
+          const text =
+            failMessages[reason] ?? `No se completó la vinculación. Usa ${ctx.prefix}${ctx.command} de nuevo para pedir otro código.`
+          ctx.reply(text).catch(() => {})
         }
       })
     } catch (error) {
