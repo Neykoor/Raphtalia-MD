@@ -154,24 +154,67 @@ export const encodeSticker = async (input, animated) => {
 
 export const noAudioMessage = 'el video no tiene audio'
 
-export const extractAudio = async input => {
+const probeSeconds = file =>
+  new Promise(resolve => {
+    const proc = spawn('ffmpeg', ['-hide_banner', '-i', file], { stdio: ['ignore', 'ignore', 'pipe'] })
+    let stderr = ''
+
+    proc.stderr.on('data', chunk => {
+      stderr += chunk.toString()
+    })
+
+    proc.on('error', () => resolve(0))
+
+    proc.on('close', () => {
+      const match = stderr.match(/Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/)
+      resolve(match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]) : 0)
+    })
+  })
+
+export const extractVoice = async input => {
   const dir = await mkdtemp(join(tmpdir(), 'raphtalia-audio-'))
 
   try {
     const inputPath = join(dir, `in.${input.extension}`)
-    const outputPath = join(dir, 'out.m4a')
+    const outputPath = join(dir, 'out.ogg')
     await writeFile(inputPath, input.buffer)
 
     try {
-      await runFfmpeg(['-y', '-t', String(MAX_SECONDS), '-i', inputPath, '-map', '0:a:0', '-vn', '-c:a', 'aac', '-b:a', '128k', outputPath])
+      await runFfmpeg([
+        '-y',
+        '-t',
+        String(MAX_SECONDS),
+        '-i',
+        inputPath,
+        '-map',
+        '0:a:0',
+        '-vn',
+        '-af',
+        'aresample=48000:async=1:first_pts=0',
+        '-c:a',
+        'libopus',
+        '-b:a',
+        '48k',
+        '-ac',
+        '1',
+        '-ar',
+        '48000',
+        '-application',
+        'audio',
+        '-f',
+        'ogg',
+        outputPath
+      ])
     } catch (error) {
       if (/matches no streams|does not contain any stream/i.test(`${error?.stderr ?? ''}${error?.message ?? ''}`)) throw new Error(noAudioMessage)
       throw error
     }
 
-    const output = await readFile(outputPath)
-    if (!output.length) throw new Error(noAudioMessage)
-    return output
+    const buffer = await readFile(outputPath)
+    if (buffer.length < 200) throw new Error(noAudioMessage)
+
+    const seconds = await probeSeconds(outputPath)
+    return { buffer, seconds: Math.max(1, Math.min(MAX_SECONDS, Math.round(seconds || MAX_SECONDS))) }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
