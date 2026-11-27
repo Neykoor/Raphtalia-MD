@@ -5,13 +5,13 @@ import { sendAudioSticker } from '../../utils/audiosticker.js'
 import { getStickerInfo } from '../../utils/stickerinfo.js'
 import {
   addExif,
+  AUDIO_MAX_SECONDS,
   buildExif,
   DOWNLOAD_TIMEOUT,
   encodeSticker,
   extractVoice,
   MAX_INPUT,
   MAX_NAME,
-  MAX_SECONDS,
   noAudioMessage,
   withTimeout
 } from '../../utils/stickermaker.js'
@@ -44,7 +44,7 @@ export default {
       return ctx.reply(
         box('Falta un video', [
           'Envía un video con el comando o responde a uno ✿',
-          `Recibirás un solo sticker animado con su audio (hasta ${MAX_SECONDS} s) ❀`,
+          `Recibirás un solo sticker animado con su audio (hasta ${AUDIO_MAX_SECONDS} s) ❀`,
           `Ejemplo: ${ctx.prefix}${ctx.command} Paquete | Autor ✧`,
           `Guarda tus datos con ${ctx.prefix}setsticker Paquete | Autor ♡`
         ])
@@ -79,8 +79,8 @@ export default {
       }
 
       const input = { buffer, extension: 'mp4' }
-      const voice = await extractVoice(input)
-      const webp = await encodeSticker(input, true)
+      const voice = await extractVoice(input, AUDIO_MAX_SECONDS)
+      const webp = await encodeSticker(input, true, AUDIO_MAX_SECONDS)
 
       await sendAudioSticker(ctx.sock, ctx.chat, addExif(webp, buildExif(pack, author)), true, voice)
       await mark(ctx, '✔️')
