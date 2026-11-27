@@ -7,6 +7,7 @@ import { join } from 'node:path'
 const FFMPEG_TIMEOUT = 90000
 export const MAX_INPUT = 25 * 1024 * 1024
 export const MAX_SECONDS = 10
+export const AUDIO_MAX_SECONDS = 30
 const MAX_STATIC = 100 * 1024
 const MAX_ANIMATED = 500 * 1024
 export const MAX_NAME = 64
@@ -15,7 +16,11 @@ const ANIMATED_ATTEMPTS = [
   { quality: 50, fps: 15 },
   { quality: 40, fps: 12 },
   { quality: 30, fps: 10 },
-  { quality: 20, fps: 8 }
+  { quality: 20, fps: 8 },
+  { quality: 15, fps: 6 },
+  { quality: 10, fps: 5 },
+  { quality: 10, fps: 4 },
+  { quality: 5, fps: 3 }
 ]
 const FRAME = 'scale=512:512:force_original_aspect_ratio=increase,crop=512:512,format=rgba'
 
@@ -125,7 +130,7 @@ export const addExif = (webp, exif) => {
   return out
 }
 
-export const encodeSticker = async (input, animated) => {
+export const encodeSticker = async (input, animated, seconds = MAX_SECONDS) => {
   const dir = await mkdtemp(join(tmpdir(), 'raphtalia-sticker-'))
 
   try {
@@ -138,7 +143,7 @@ export const encodeSticker = async (input, animated) => {
 
     for (const attempt of attempts) {
       const args = animated
-        ? ['-y', '-t', String(MAX_SECONDS), '-i', inputPath, '-vf', `fps=${attempt.fps},${FRAME}`, '-an', '-c:v', 'libwebp', '-loop', '0', '-quality', String(attempt.quality), '-compression_level', '6', outputPath]
+        ? ['-y', '-t', String(seconds), '-i', inputPath, '-vf', `fps=${attempt.fps},${FRAME}`, '-an', '-c:v', 'libwebp', '-loop', '0', '-quality', String(attempt.quality), '-compression_level', '6', outputPath]
         : ['-y', '-i', inputPath, '-vf', FRAME, '-frames:v', '1', '-c:v', 'libwebp', '-quality', String(attempt.quality), '-compression_level', '6', outputPath]
 
       await runFfmpeg(args)
@@ -171,7 +176,7 @@ const probeSeconds = file =>
     })
   })
 
-export const extractVoice = async input => {
+export const extractVoice = async (input, maxSeconds = MAX_SECONDS) => {
   const dir = await mkdtemp(join(tmpdir(), 'raphtalia-audio-'))
 
   try {
@@ -183,7 +188,7 @@ export const extractVoice = async input => {
       await runFfmpeg([
         '-y',
         '-t',
-        String(MAX_SECONDS),
+        String(maxSeconds),
         '-i',
         inputPath,
         '-map',
@@ -214,7 +219,7 @@ export const extractVoice = async input => {
     if (buffer.length < 200) throw new Error(noAudioMessage)
 
     const seconds = await probeSeconds(outputPath)
-    return { buffer, seconds: Math.max(1, Math.min(MAX_SECONDS, Math.round(seconds || MAX_SECONDS))) }
+    return { buffer, seconds: Math.max(1, Math.min(maxSeconds, Math.round(seconds || maxSeconds))) }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
